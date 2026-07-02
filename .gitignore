@@ -1,0 +1,19 @@
+# Secrets — NEVER commit
+.env
+*.pem
+private.pem
+public.pem
+
+# Dependencies & build output
+node_modules/
+dist/
+.next/
+
+# Original root-level draft files (superseded by src/ versions)
+/flow.route.ts
+/questionGenerator.ts
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.local
