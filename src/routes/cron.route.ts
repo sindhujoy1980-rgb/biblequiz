@@ -175,7 +175,7 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
   });
 
   const messageBody =
-    `🌹 🙏 CyFam Bible Quiz 🙏 🌹\n\n` +
+    `🌹 🙏 Bible Quiz Daily 🙏 🌹\n\n` +
     `📖 Daily Bible Quiz\n` +
     `रोज की बाइबल प्रश्नोत्तरी\n` +
     `Based on today's Gospel\n` +
@@ -203,13 +203,13 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
           type: 'flow',
           header: {
             type: 'text',
-            text: '📖 CyFam Daily Bible Quiz',
+            text: '📖 Bible Quiz Daily',
           },
           body: {
             text: messageBody,
           },
           footer: {
-            text: 'CyFam • रोज की बाइबल प्रश्नोत्तरी',
+            text: 'Bible Quiz Daily • रोज की बाइबल प्रश्नोत्तरी',
           },
           action: {
             name: 'flow',

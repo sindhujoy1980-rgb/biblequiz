@@ -56,7 +56,7 @@ app.use(express.json());
 // ── Health check ─────────────────────────────────────────────
 app.get('/', (_req, res) => {
   res.json({
-    status: '✅ CyFam Bible Quiz Backend is running',
+    status: '✅ Bible Quiz Daily Backend is running',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
   });

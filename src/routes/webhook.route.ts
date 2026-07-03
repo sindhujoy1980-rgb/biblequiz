@@ -102,7 +102,7 @@ async function handleIncomingMessage(
 
   // Auto-reply: guide user to the quiz
   const replyText =
-    'नमस्ते! 🙏\n\nCyFam Bible Quiz के लिए कृपया प्रतिदिन सुबह 8 बजे हमारे संदेश की प्रतीक्षा करें।\n\n📖 ईश्वर आपको आशीष दे!';
+    'नमस्ते! 🙏\n\nBible Quiz Daily के लिए कृपया प्रतिदिन सुबह 8 बजे हमारे संदेश की प्रतीक्षा करें।\n\n📖 ईश्वर आपको आशीष दे!';
 
   await sendTextMessage(message.from, replyText, metadata.phone_number_id);
 }
