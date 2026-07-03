@@ -33,7 +33,7 @@ function validateCronSecret(req: Request, res: Response, next: NextFunction): vo
 router.use(validateCronSecret);
 
 // ── POST /api/cron/generate-questions ────────────────────────
-// Generates tomorrow's 3 quiz questions via Gemini AI
+// Generates tomorrow's 1 quiz question via Gemini AI (Gospel-based)
 // Schedule: daily at 11 PM IST (on cron-job.org)
 router.post('/generate-questions', async (req: Request, res: Response) => {
   try {
@@ -63,7 +63,7 @@ router.post('/generate-questions', async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      message: `✅ Generated 3 questions for ${quizDate}`,
+      message: `✅ Generated 1 Gospel question for ${quizDate}`,
       quizDate,
       count: questions.length,
     });
@@ -81,17 +81,19 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    // Verify 3 approved questions exist for today
+    // Verify 1 approved question exists for today
     const { data: questions, error: qError } = await supabase
       .from('questions')
       .select('id')
       .eq('quiz_date', today)
-      .eq('status', 'approved');
+      .eq('status', 'approved')
+      .eq('slot', 1)
+      .limit(1);
 
-    if (qError || !questions || questions.length < 3) {
+    if (qError || !questions || questions.length < 1) {
       return res.status(400).json({
         success: false,
-        error: `Cannot send quiz: only ${questions?.length ?? 0}/3 approved questions for ${today}. Please approve questions first in admin panel.`,
+        error: `Cannot send quiz: No approved Gospel question for ${today}. Please approve the question first in admin panel.`,
       });
     }
 
@@ -164,7 +166,7 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
     .eq('status', 'approved')
     .order('slot', { ascending: true });
 
-  const gospel = questions?.find(q => q.slot === 3);
+  const gospel = questions?.find(q => q.slot === 1);
   const liturgicalDay = gospel?.liturgical_day || '';
   const gospelRef = gospel?.verse_reference || '';
 
@@ -184,7 +186,7 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
     (liturgicalDay ? `✝️ ${liturgicalDay}\n` : '') +
     (gospelRef ? `📖 ${gospelRef}\n` : '') +
     `\nनमस्ते ${firstName}! 🙏\n` +
-    `आज की क्विज़ में 3 सवाल हैं।\n` +
+    `आज की क्विज़ में *1 सवाल* है — आज के सुसमाचार पर।\n` +
     `नीचे बटन दबाएं और शुरू करें! 👇`;
 
   const response = await fetch(
