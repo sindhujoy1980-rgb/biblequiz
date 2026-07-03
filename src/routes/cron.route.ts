@@ -199,6 +199,7 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
         Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(10000), // 10 second timeout
       body: JSON.stringify({
         messaging_product: 'whatsapp',
         to: phone,
@@ -234,9 +235,14 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
   );
 
   if (!response.ok) {
-    const errBody = await response.json();
-    throw new Error(JSON.stringify(errBody));
+    const errBody = await response.json().catch(() => ({}));
+    const errMsg = JSON.stringify(errBody);
+    console.error(`[WhatsApp] Send failed to ${phone}:`, errMsg);
+    throw new Error(errMsg);
   }
+
+  const result = await response.json();
+  console.log(`[WhatsApp] ✅ Sent to ${phone}:`, result?.messages?.[0]?.id);
 }
 
 function formatDate(isoDate: string): string {
