@@ -33,16 +33,14 @@ function validateCronSecret(req: Request, res: Response, next: NextFunction): vo
 router.use(validateCronSecret);
 
 // ── POST /api/cron/generate-questions ────────────────────────
-// Generates tomorrow's 1 quiz question via Gemini AI (Gospel-based)
+// Generates tomorrow's quiz question via Gemini AI (Gospel-based)
 // Schedule: daily at 11 PM IST (on cron-job.org)
 router.post('/generate-questions', async (req: Request, res: Response) => {
   try {
-    // Target date: tomorrow (so admin can review before 8 AM)
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const quizDate = tomorrow.toISOString().split('T')[0];
 
-    // Skip if questions already exist for this date
     const { data: existing } = await supabase
       .from('questions')
       .select('id')
@@ -63,7 +61,7 @@ router.post('/generate-questions', async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      message: `✅ Generated 1 Gospel question for ${quizDate}`,
+      message: `✅ Generated ${questions.length} question(s) for ${quizDate}`,
       quizDate,
       count: questions.length,
     });
@@ -75,13 +73,13 @@ router.post('/generate-questions', async (req: Request, res: Response) => {
 });
 
 // ── POST /api/cron/send-quiz ──────────────────────────────────
-// Sends today's quiz to all active users via WhatsApp Flow
+// Sends today's quiz to all active users via WhatsApp template
 // Schedule: daily at 8:00 AM IST (on cron-job.org)
 router.post('/send-quiz', async (req: Request, res: Response) => {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    // Verify at least 1 approved question exists for today (any slot)
+    // Verify at least 1 approved question exists for today
     const { data: questions, error: qError } = await supabase
       .from('questions')
       .select('id')
@@ -115,13 +113,12 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
 
     for (const user of users) {
       try {
-        console.log(`[Send] Attempting to send to phone: ${user.phone}, name: ${user.name}`);
-        const msgId = await sendQuizFlowMessage(user.phone, user.name, today);
+        console.log(`[Send] Attempting → phone: ${user.phone}, name: ${user.name}`);
+        const msgId = await sendQuizMessage(user.phone, user.name, today);
         sent++;
         debugResults.push({ phone: user.phone, status: 'sent', messageId: msgId });
         console.log(`[Send] ✅ Success for ${user.phone}, messageId: ${msgId}`);
-        // Rate limit: WhatsApp allows ~80 msgs/sec; 50ms gap keeps it safe
-        await new Promise(r => setTimeout(r, 50));
+        await new Promise(r => setTimeout(r, 50)); // rate limit buffer
       } catch (err: any) {
         console.error(`[Send] ❌ Failed for ${user.phone}:`, err.message);
         failed++;
@@ -130,7 +127,6 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
       }
     }
 
-    // Mark quiz as published
     await supabase
       .from('quizzes')
       .update({ published: true, published_at: new Date().toISOString() })
@@ -142,8 +138,8 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
       sent,
       failed,
       total: users.length,
-      failedPhones: failedPhones.slice(0, 10), // only show first 10
-      debug: debugResults, // full per-user result
+      failedPhones: failedPhones.slice(0, 10),
+      debug: debugResults,
     });
 
   } catch (err: any) {
@@ -152,50 +148,45 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
   }
 });
 
-// ── Helper: Send WhatsApp Flow message to one user ────────────
-async function sendQuizFlowMessage(phone: string, name: string, quizDate: string) {
+// ── sendQuizMessage ───────────────────────────────────────────
+// Sends daily quiz via WhatsApp approved template.
+// Template includes: readings excerpt + reflection + Flow quiz button.
+async function sendQuizMessage(phone: string, name: string, quizDate: string): Promise<string> {
   const jwt = await import('jsonwebtoken');
 
-  // Create a JWT flow_token containing the user's phone
+  // JWT flow_token — verified by the flow endpoint to identify the user
   const flowToken = jwt.default.sign(
     { phone },
     process.env.JWT_SECRET!,
     { expiresIn: '24h' }
   );
 
-  // Fetch today's questions to get liturgical day from Gospel slot
-  const { data: questions } = await supabase
-    .from('questions')
-    .select('slot, liturgical_day, verse_reference, question_text, question_roman, english_question')
-    .eq('quiz_date', quizDate)
-    .eq('status', 'approved')
-    .order('slot', { ascending: true });
+  // Fetch today's readings + reflection from Supabase
+  const { data: readings } = await supabase
+    .from('daily_readings')
+    .select('liturgical_day, first_reading_ref, first_reading_text, gospel_ref, gospel_text, reflection_en, reflection_hi')
+    .eq('reading_date', quizDate)
+    .single();
 
-  // Find gospel: try slot 2 (NT-Gospel in admin) first, then slot 1, then any
-  const gospel = questions?.find(q => q.slot === 2)
-    || questions?.find(q => q.slot === 1)
-    || questions?.[0];
-  const liturgicalDay = gospel?.liturgical_day || '';
-  const gospelRef = gospel?.verse_reference || '';
-
-  // Build the message body matching St. Chavara Church model
-  const firstName = name.split(' ')[0];
+  const firstName     = name.split(' ')[0];
+  const templateName  = process.env.WHATSAPP_TEMPLATE_NAME || 'bible_quiz_with_readings';
   const dateFormatted = new Date(quizDate).toLocaleDateString('en-IN', {
     day: 'numeric', month: 'long', year: 'numeric', weekday: 'long',
   });
 
-  const messageBody =
-    `🌹 🙏 Bible Quiz Daily 🙏 🌹\n\n` +
-    `📖 Daily Bible Quiz\n` +
-    `रोज की बाइबल प्रश्नोत्तरी\n` +
-    `Based on today's Gospel\n` +
-    `आज के सुसमाचार के अनुसार\n\n` +
-    `📅 ${dateFormatted}\n` +
-    (liturgicalDay ? `✝️ ${liturgicalDay}\n` : '') +
-    (gospelRef ? `📖 ${gospelRef}\n` : '') +
-    `\nनमस्ते ${firstName}! 🙏\n` +
-    `आज की क्विज़ में *1 सवाल* है — आज के सुसमाचार पर।\n` +
-    `नीचे बटन दबाएं और शुरू करें! 👇`;
+  // Build template variable values (trimmed to stay within 1024 char body limit)
+  const liturgicalDay  = readings?.liturgical_day || 'Catholic Daily Readings';
+  const firstReading   = readings?.first_reading_ref
+    ? `📖 ${readings.first_reading_ref}\n${(readings.first_reading_text || '').slice(0, 180)}`
+    : '(First Reading not available)';
+  const gospel         = readings?.gospel_ref
+    ? `📖 ${readings.gospel_ref}\n${(readings.gospel_text || '').slice(0, 180)}`
+    : '(Gospel not available)';
+  const reflection     = readings?.reflection_en
+    ? `${readings.reflection_en}\n${readings.reflection_hi || ''}`
+    : "Reflect on today's Gospel and let it guide your day.";
+
+  console.log(`[WhatsApp] Sending template "${templateName}" to ${phone} (${firstName})`);
 
   const response = await fetch(
     `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
@@ -205,36 +196,43 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
         Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      signal: AbortSignal.timeout(10000), // 10 second timeout
+      signal: AbortSignal.timeout(10000),
       body: JSON.stringify({
         messaging_product: 'whatsapp',
         to: phone,
-        type: 'interactive',
-        interactive: {
-          type: 'flow',
-          header: {
-            type: 'text',
-            text: '📖 Bible Quiz Daily',
-          },
-          body: {
-            text: messageBody,
-          },
-          footer: {
-            text: 'Bible Quiz Daily • रोज की बाइबल प्रश्नोत्तरी',
-          },
-          action: {
-            name: 'flow',
-            parameters: {
-              flow_message_version: '3',
-              flow_token: flowToken,
-              flow_id: process.env.WHATSAPP_FLOW_ID!,
-              flow_cta: '✝️ क्विज़ शुरू करें',
-              flow_action: 'navigate',
-              flow_action_payload: {
-                screen: 'WELCOME',
-              },
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: 'en' },
+          components: [
+            {
+              type: 'header',
+              parameters: [
+                { type: 'text', text: `📖 Bible Quiz Daily — ${dateFormatted}` },
+              ],
             },
-          },
+            {
+              type: 'body',
+              parameters: [
+                { type: 'text', text: liturgicalDay },  // {{1}}
+                { type: 'text', text: firstReading },   // {{2}}
+                { type: 'text', text: gospel },         // {{3}}
+                { type: 'text', text: reflection },     // {{4}}
+                { type: 'text', text: firstName },      // {{5}}
+              ],
+            },
+            {
+              type: 'button',
+              sub_type: 'flow',
+              index: '0',
+              parameters: [
+                {
+                  type: 'action',
+                  action: { flow_token: flowToken },
+                },
+              ],
+            },
+          ],
         },
       }),
     }
@@ -242,20 +240,15 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
 
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
-    const errMsg = JSON.stringify(errBody);
+    const errMsg  = JSON.stringify(errBody);
     console.error(`[WhatsApp] Send failed to ${phone}:`, errMsg);
     throw new Error(errMsg);
   }
 
-  const result = await response.json();
+  const result    = await response.json();
   const messageId = result?.messages?.[0]?.id;
   console.log(`[WhatsApp] ✅ Sent to ${phone}: messageId=${messageId}, wa_id=${result?.contacts?.[0]?.wa_id}`);
   return messageId;
-}
-
-function formatDate(isoDate: string): string {
-  const d = new Date(isoDate);
-  return d.toLocaleDateString('hi-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 export default router;
