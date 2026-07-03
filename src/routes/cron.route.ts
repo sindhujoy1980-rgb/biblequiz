@@ -81,19 +81,18 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    // Verify 1 approved question exists for today
+    // Verify at least 1 approved question exists for today (any slot)
     const { data: questions, error: qError } = await supabase
       .from('questions')
       .select('id')
       .eq('quiz_date', today)
       .eq('status', 'approved')
-      .eq('slot', 1)
       .limit(1);
 
     if (qError || !questions || questions.length < 1) {
       return res.status(400).json({
         success: false,
-        error: `Cannot send quiz: No approved Gospel question for ${today}. Please approve the question first in admin panel.`,
+        error: `Cannot send quiz: No approved question for ${today}. Please approve at least one question in admin panel.`,
       });
     }
 
@@ -166,7 +165,10 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
     .eq('status', 'approved')
     .order('slot', { ascending: true });
 
-  const gospel = questions?.find(q => q.slot === 1);
+  // Find gospel: try slot 2 (NT-Gospel in admin) first, then slot 1, then any
+  const gospel = questions?.find(q => q.slot === 2)
+    || questions?.find(q => q.slot === 1)
+    || questions?.[0];
   const liturgicalDay = gospel?.liturgical_day || '';
   const gospelRef = gospel?.verse_reference || '';
 
