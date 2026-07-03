@@ -150,12 +150,42 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
   const jwt = await import('jsonwebtoken');
 
   // Create a JWT flow_token containing the user's phone
-  // The Flow handler reads this to identify the user when they submit answers
   const flowToken = jwt.default.sign(
     { phone },
     process.env.JWT_SECRET!,
     { expiresIn: '24h' }
   );
+
+  // Fetch today's questions to get liturgical day from Gospel slot
+  const { data: questions } = await supabase
+    .from('questions')
+    .select('slot, liturgical_day, verse_reference, question_text, question_roman, english_question')
+    .eq('quiz_date', quizDate)
+    .eq('status', 'approved')
+    .order('slot', { ascending: true });
+
+  const gospel = questions?.find(q => q.slot === 3);
+  const liturgicalDay = gospel?.liturgical_day || '';
+  const gospelRef = gospel?.verse_reference || '';
+
+  // Build the message body matching St. Chavara Church model
+  const firstName = name.split(' ')[0];
+  const dateFormatted = new Date(quizDate).toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'long', year: 'numeric', weekday: 'long',
+  });
+
+  const messageBody =
+    `🌹 🙏 CyFam Bible Quiz 🙏 🌹\n\n` +
+    `📖 Daily Bible Quiz\n` +
+    `रोज की बाइबल प्रश्नोत्तरी\n` +
+    `Based on today's Gospel\n` +
+    `आज के सुसमाचार के अनुसार\n\n` +
+    `📅 ${dateFormatted}\n` +
+    (liturgicalDay ? `✝️ ${liturgicalDay}\n` : '') +
+    (gospelRef ? `📖 ${gospelRef}\n` : '') +
+    `\nनमस्ते ${firstName}! 🙏\n` +
+    `आज की क्विज़ में 3 सवाल हैं।\n` +
+    `नीचे बटन दबाएं और शुरू करें! 👇`;
 
   const response = await fetch(
     `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
@@ -173,13 +203,13 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
           type: 'flow',
           header: {
             type: 'text',
-            text: '📖 CyFam Bible Quiz',
+            text: '📖 CyFam Daily Bible Quiz',
           },
           body: {
-            text: `नमस्ते ${name}! 🙏\nआज की बाइबल क्विज़ तैयार है।\nतीन सवाल — अपना ज्ञान परखें!\n\n📅 ${formatDate(quizDate)}`,
+            text: messageBody,
           },
           footer: {
-            text: 'CyFam Daily Quiz • प्रतिदिन एक नई क्विज़',
+            text: 'CyFam • रोज की बाइबल प्रश्नोत्तरी',
           },
           action: {
             name: 'flow',
