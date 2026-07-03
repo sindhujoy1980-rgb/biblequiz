@@ -111,17 +111,22 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
     let sent = 0;
     let failed = 0;
     const failedPhones: string[] = [];
+    const debugResults: any[] = [];
 
     for (const user of users) {
       try {
-        await sendQuizFlowMessage(user.phone, user.name, today);
+        console.log(`[Send] Attempting to send to phone: ${user.phone}, name: ${user.name}`);
+        const msgId = await sendQuizFlowMessage(user.phone, user.name, today);
         sent++;
+        debugResults.push({ phone: user.phone, status: 'sent', messageId: msgId });
+        console.log(`[Send] ✅ Success for ${user.phone}, messageId: ${msgId}`);
         // Rate limit: WhatsApp allows ~80 msgs/sec; 50ms gap keeps it safe
         await new Promise(r => setTimeout(r, 50));
       } catch (err: any) {
-        console.error(`[Send] Failed for ${user.phone}:`, err.message);
+        console.error(`[Send] ❌ Failed for ${user.phone}:`, err.message);
         failed++;
         failedPhones.push(user.phone);
+        debugResults.push({ phone: user.phone, status: 'failed', error: err.message });
       }
     }
 
@@ -138,6 +143,7 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
       failed,
       total: users.length,
       failedPhones: failedPhones.slice(0, 10), // only show first 10
+      debug: debugResults, // full per-user result
     });
 
   } catch (err: any) {
@@ -242,7 +248,9 @@ async function sendQuizFlowMessage(phone: string, name: string, quizDate: string
   }
 
   const result = await response.json();
-  console.log(`[WhatsApp] ✅ Sent to ${phone}:`, result?.messages?.[0]?.id);
+  const messageId = result?.messages?.[0]?.id;
+  console.log(`[WhatsApp] ✅ Sent to ${phone}: messageId=${messageId}, wa_id=${result?.contacts?.[0]?.wa_id}`);
+  return messageId;
 }
 
 function formatDate(isoDate: string): string {
