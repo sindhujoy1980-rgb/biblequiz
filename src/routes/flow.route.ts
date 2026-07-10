@@ -128,17 +128,20 @@ router.get('/test-init', async (_req: Request, res: Response) => {
 // ── Main handler ──────────────────────────────────────────────
 router.post('/exchange', async (req: Request, res: Response) => {
   try {
+    // ── Health ping — NOT encrypted, must be checked BEFORE decryptRequest ──
+    // Meta sends { "action": "ping" } as plain JSON (no encrypted_flow_data fields).
+    // Calling decryptRequest on a ping body crashes with TypeError → 500 → "page couldn't load".
+    if (req.body?.action === 'ping') {
+      console.log('[Flow] ping received — responding active (plain JSON)');
+      return res.json({ data: { status: 'active' } });
+    }
+
     const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
     const { decryptedBody, aesKey, iv } = decryptRequest({ encrypted_flow_data, encrypted_aes_key, initial_vector });
     const { action: rawAction, screen, data, flow_token, version } = decryptedBody as any;
     const action = (rawAction || '').toLowerCase();
     process.stderr.write(`[Flow] action=${action} screen=${screen} version=${version}\n`);
     console.log('[Flow] action:', action, '| screen:', screen, '| version:', version);
-
-    // ── Health ping ──────────────────────────────────────────
-    if (action === 'ping') {
-      return res.send(encryptResponse({ version, data: { status: 'active' } }, aesKey, iv));
-    }
 
     // ── INIT: Populate WELCOME screen variables (old-style flow JSON) ────
     // INIT must return data for the CURRENT screen (WELCOME), NOT navigate elsewhere
@@ -206,14 +209,18 @@ router.post('/exchange', async (req: Request, res: Response) => {
         ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
         : null;
 
+      // WhatsApp Flow JSON TextBody variables CANNOT contain \n newlines — use ' | ' separator.
+      // Newlines in variables cause silent client-side validation failure → blank/broken screen.
+      const cleanOpt = (s: string) => (s || '—').replace(/[\n\r\t]/g, ' ').trim();
       const questionData = {
         q1_id:      q ? String(q.id) : '',
         q1_text:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
         q1_english: q?.english_question || '',
         // All 4 options as a single string — shown in TextBody above the radio buttons
         // RadioButtonsGroup uses static A/B/C/D (WhatsApp doesn't support variables in data-source.title)
+        // IMPORTANT: No \n — use ' | ' as separator so WhatsApp doesn't reject the variable
         q1_options: q
-          ? `A) ${q.option_a || '—'}\nB) ${q.option_b || '—'}\nC) ${q.option_c || '—'}\nD) ${q.option_d || '—'}`
+          ? `A) ${cleanOpt(q.option_a)} | B) ${cleanOpt(q.option_b)} | C) ${cleanOpt(q.option_c)} | D) ${cleanOpt(q.option_d)}`
           : 'Quiz not available today.',
         q1_verse:   q?.verse_reference || '',
       };
@@ -252,7 +259,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
 
       if (existing) {
         const summary = await buildSummary(user.id, today, q1_id);
-        return res.send(encryptResponse({ screen: 'SUMMARY', data: summary }, aesKey, iv));
+        return res.send(encryptResponse({ version, screen: 'SUMMARY', data: summary }, aesKey, iv));
       }
 
       // Fetch correct answer + explanation
@@ -309,7 +316,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
         explanation:    question.explanation || '',
       };
 
-      return res.send(encryptResponse({ screen: 'SUMMARY', data: summaryData }, aesKey, iv));
+      return res.send(encryptResponse({ version, screen: 'SUMMARY', data: summaryData }, aesKey, iv));
     }
 
     // Default passthrough
