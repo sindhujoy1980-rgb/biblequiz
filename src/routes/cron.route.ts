@@ -247,7 +247,7 @@ async function sendQuizMessage(phone: string, name: string, quizDate: string): P
     throw new Error(errMsg);
   }
 
-  const result    = await response.json();
+  const result    = await response.json() as any;
   const messageId = result?.messages?.[0]?.id;
   console.log(`[WhatsApp] ✅ Sent to ${phone}: messageId=${messageId}, wa_id=${result?.contacts?.[0]?.wa_id}`);
   return messageId;
