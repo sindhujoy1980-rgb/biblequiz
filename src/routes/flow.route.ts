@@ -128,11 +128,12 @@ router.get('/test-init', async (_req: Request, res: Response) => {
 // ── Main handler ──────────────────────────────────────────────
 router.post('/exchange', async (req: Request, res: Response) => {
   try {
-    // ── Health ping — NOT encrypted, must be checked BEFORE decryptRequest ──
-    // Meta sends { "action": "ping" } as plain JSON (no encrypted_flow_data fields).
-    // Calling decryptRequest on a ping body crashes with TypeError → 500 → "page couldn't load".
+    // ── Plain-text ping (WhatsApp client opening the flow) ────────────────────
+    // The WhatsApp client sends { "action": "ping" } as unencrypted JSON.
+    // Must be checked BEFORE decryptRequest — calling decryptRequest on a plain
+    // ping body (no encrypted_flow_data fields) throws TypeError → HTTP 500.
     if (req.body?.action === 'ping') {
-      console.log('[Flow] ping received — responding active (plain JSON)');
+      console.log('[Flow] plain-text ping — responding active');
       return res.json({ data: { status: 'active' } });
     }
 
@@ -142,6 +143,14 @@ router.post('/exchange', async (req: Request, res: Response) => {
     const action = (rawAction || '').toLowerCase();
     process.stderr.write(`[Flow] action=${action} screen=${screen} version=${version}\n`);
     console.log('[Flow] action:', action, '| screen:', screen, '| version:', version);
+
+    // ── Encrypted ping (Meta Business Manager health check) ───────────────────
+    // The Meta console health check sends an ENCRYPTED ping. After decryption,
+    // the action is 'ping'. Must respond with encrypted { data: { status:'active' } }.
+    if (action === 'ping') {
+      console.log('[Flow] encrypted ping (health check) — responding active');
+      return res.send(encryptResponse({ version, data: { status: 'active' } }, aesKey, iv));
+    }
 
     // ── INIT: Populate WELCOME screen variables (old-style flow JSON) ────
     // INIT must return data for the CURRENT screen (WELCOME), NOT navigate elsewhere
