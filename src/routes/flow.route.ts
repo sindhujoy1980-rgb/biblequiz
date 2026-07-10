@@ -267,12 +267,51 @@ router.post('/exchange', async (req: Request, res: Response) => {
       return res.send(encryptResponse({ version, data: { status: 'active' } }, aesKey, iv));
     }
 
-    // ── INIT ──────────────────────────────────────────────────────
+    // ── INIT: fetch question immediately and navigate to QUESTION ──────────────
+    // NOTE: We do NOT return WELCOME + wait for data_exchange.
+    // Reason: WhatsApp clients sometimes ignore the data_exchange WELCOME→QUESTION
+    //         response and show __example__ values (a known client-side bug).
+    //         Solution: Load the question on INIT and go directly to QUESTION.
     if (action === 'init') {
-      console.log('[Flow:INIT] returning empty data:{} for static WELCOME');
-      await dbg('INIT', { action: 'init', response_screen: 'WELCOME', notes: 'returning data:{}' });
-      return res.send(encryptResponse({ version, screen: 'WELCOME', data: {} }, aesKey, iv));
+      const today = new Date().toISOString().split('T')[0];
+      console.log('[Flow:INIT] fetching question for', today, '— navigating directly to QUESTION');
+      await dbg('INIT', { action: 'init', response_screen: 'QUESTION', notes: `date=${today}` });
+
+      const { data: questions, error } = await supabase
+        .from('questions')
+        .select('id, slot, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
+        .eq('quiz_date', today)
+        .not('status', 'eq', 'rejected')
+        .order('slot', { ascending: true })
+        .limit(5);
+
+      const q = (!error && questions && questions.length > 0)
+        ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
+        : null;
+
+      const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || '—';
+      const optA = cleanOpt(q?.option_a || '');
+      const optB = cleanOpt(q?.option_b || '');
+      const optC = cleanOpt(q?.option_c || '');
+      const optD = cleanOpt(q?.option_d || '');
+
+      const questionData = {
+        q1_id:      q ? String(q.id) : '',
+        q1_text:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
+        q1_english: q?.english_question || '',
+        q1_options: q ? `A) ${optA}\nB) ${optB}\nC) ${optC}\nD) ${optD}` : 'Quiz not available today.',
+        q1_verse:   q?.verse_reference || '',
+      };
+
+      await dbg('INIT_QUESTION', {
+        action: 'init',
+        response_screen: 'QUESTION',
+        notes: `q1_id=${questionData.q1_id} q1_text_len=${questionData.q1_text.length} found=${questions?.length ?? 0}`,
+        error_msg: error?.message ?? '',
+      });
+      return res.send(encryptResponse({ version, screen: 'QUESTION', data: questionData }, aesKey, iv));
     }
+
 
     // ── data_exchange: WELCOME → "Start Quiz" tapped ──────────────────────────
     if (action === 'data_exchange' && (!screen || screen === 'WELCOME')) {
