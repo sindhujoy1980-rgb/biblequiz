@@ -69,6 +69,41 @@ function encryptResponse(response: object, aesKey: Buffer, iv: Buffer): string {
   return encrypted.toString('base64');
 }
 
+// ── Diagnostic: GET /api/flow/test-init ───────────────────
+// Call this to verify what INIT would return without encryption
+router.get('/test-init', async (_req: Request, res: Response) => {
+  const today = new Date().toISOString().split('T')[0];
+  const { data: questions, error } = await supabase
+    .from('questions')
+    .select('id, slot, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
+    .eq('quiz_date', today).eq('status', 'approved')
+    .order('slot', { ascending: true }).limit(5);
+  const { data: readings } = await supabase
+    .from('daily_readings')
+    .select('liturgical_day, gospel_ref, first_reading_ref')
+    .eq('reading_date', today).single();
+  const q = (!error && questions && questions.length > 0)
+    ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
+    : null;
+  return res.json({
+    today,
+    questionsFound: questions?.length ?? 0,
+    questionError: error?.message,
+    readingsFound: !!readings,
+    sampleQuestion: q ? { id: q.id, text: q.question_text?.slice(0, 80), slot: q.slot } : null,
+    initWouldReturn: {
+      screen: 'WELCOME',
+      data: {
+        quiz_date: formatHindiDate(today),
+        liturgical_day: readings?.liturgical_day || '(missing)',
+        gospel_ref: readings?.gospel_ref || '(missing)',
+        q1_id: q ? String(q.id) : '(no question)',
+        q1_roman: q?.question_text?.slice(0, 60) || '(no question)',
+      }
+    }
+  });
+});
+
 // ── Main handler ──────────────────────────────────────────────
 router.post('/exchange', async (req: Request, res: Response) => {
   try {
