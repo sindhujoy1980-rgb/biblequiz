@@ -207,17 +207,17 @@ router.post('/exchange', async (req: Request, res: Response) => {
         : null;
 
       const questionData = {
-        q1_id:       q ? String(q.id) : '',
-        q1_roman:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
-        q1_text:     q?.question_text || 'Quiz not available today.',
-        q1_english:  q?.english_question || '',
-        q1_option_a: q?.option_a || '—',
-        q1_option_b: q?.option_b || '—',
-        q1_option_c: q?.option_c || '—',
-        q1_option_d: q?.option_d || '—',
-        q1_verse:    q?.verse_reference || '',
+        q1_id:      q ? String(q.id) : '',
+        q1_text:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
+        q1_english: q?.english_question || '',
+        // All 4 options as a single string — shown in TextBody above the radio buttons
+        // RadioButtonsGroup uses static A/B/C/D (WhatsApp doesn't support variables in data-source.title)
+        q1_options: q
+          ? `A) ${q.option_a || '—'}\nB) ${q.option_b || '—'}\nC) ${q.option_c || '—'}\nD) ${q.option_d || '—'}`
+          : 'Quiz not available today.',
+        q1_verse:   q?.verse_reference || '',
       };
-      console.log('[Flow data_exchange WELCOME] Sending QUESTION screen. q1_id:', questionData.q1_id);
+      console.log('[Flow data_exchange WELCOME] Sending QUESTION screen. q1_id:', questionData.q1_id, '| q1_text[:40]:', questionData.q1_text.slice(0, 40));
       return res.send(encryptResponse({ version, screen: 'QUESTION', data: questionData }, aesKey, iv));
     }
 
