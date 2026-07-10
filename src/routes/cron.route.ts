@@ -79,18 +79,18 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    // Verify at least 1 approved question exists for today
+    // Verify at least 1 question exists for today (no approval required)
     const { data: questions, error: qError } = await supabase
       .from('questions')
       .select('id')
       .eq('quiz_date', today)
-      .eq('status', 'approved')
+      .not('status', 'eq', 'rejected')
       .limit(1);
 
     if (qError || !questions || questions.length < 1) {
       return res.status(400).json({
         success: false,
-        error: `Cannot send quiz: No approved question for ${today}. Please approve at least one question in admin panel.`,
+        error: `Cannot send quiz: No question found for ${today}. Please generate at least one question in admin panel.`,
       });
     }
 

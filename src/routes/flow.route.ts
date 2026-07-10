@@ -174,7 +174,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
         .from('questions')
         .select('id, slot, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
         .eq('quiz_date', today)
-        .eq('status', 'approved')
+        .not('status', 'eq', 'rejected')   // send any question — no approval required
         .order('slot', { ascending: true })
         .limit(5);
 
@@ -212,7 +212,10 @@ router.post('/exchange', async (req: Request, res: Response) => {
 
       // Get user phone from JWT flow_token
       const phone = await getUserPhoneFromToken(flow_token);
-      if (!phone) return res.status(400).json({ error: 'Invalid flow token' });
+      if (!phone) {
+        console.error('[Flow] Invalid flow token');
+        return res.send(encryptResponse({ version, screen: 'WELCOME', data: {} }, aesKey, iv));
+      }
 
       // Fetch user record
       const { data: user } = await supabase
@@ -222,7 +225,17 @@ router.post('/exchange', async (req: Request, res: Response) => {
         .eq('status', 'active')
         .single();
 
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!user) {
+        console.error('[Flow] User not found for phone:', phone);
+        // Return SUMMARY with error message instead of crashing the flow
+        return res.send(encryptResponse({
+          version, screen: 'SUMMARY',
+          data: {
+            result: '❌ User not registered. Please contact admin.',
+            rank: '-', correct_answer: '-', explanation: ''
+          }
+        }, aesKey, iv));
+      }
 
       // Prevent duplicate submission — return existing result
       const { data: existing } = await supabase
