@@ -84,18 +84,11 @@ router.post('/exchange', async (req: Request, res: Response) => {
       return res.send(encryptResponse({ version, data: { status: 'active' } }, aesKey, iv));
     }
 
-    // ── INIT (legacy support) ─────────────────────────────────
-    // Note: INIT is often not triggered reliably; use data_exchange on WELCOME instead
+    // ── INIT: Populate WELCOME screen variables (old-style flow JSON) ────
+    // INIT must return data for the CURRENT screen (WELCOME), NOT navigate elsewhere
     if (action === 'init') {
-      console.log('[Flow] INIT action received (legacy path)');
-      // Fall through to data_exchange WELCOME handler below
-    }
-
-    // ── data_exchange: WELCOME screen — "Start Quiz" tapped ──
-    // This is the primary way quiz data is loaded into the QUESTION screen
-    if (action === 'init' || (action === 'data_exchange' && (!screen || screen === 'WELCOME'))) {
       const today = new Date().toISOString().split('T')[0];
-      console.log('[Flow] Loading question for date:', today);
+      console.log('[Flow INIT] handler entered. today:', today);
 
       const { data: questions, error } = await supabase
         .from('questions')
@@ -111,37 +104,64 @@ router.post('/exchange', async (req: Request, res: Response) => {
         .eq('reading_date', today)
         .single();
 
-      console.log('[Flow] questions found:', questions?.length ?? 0, '| q error:', error?.message);
+      console.log('[Flow INIT] questions:', questions?.length ?? 0, '| error:', error?.message);
 
-      if (error || !questions || questions.length === 0) {
-        const errData = {
-          q1_id:      '',
-          q1_roman:   'आज की क्विज़ अभी उपलब्ध नहीं है। कल पुनः प्रयास करें।',
-          q1_text:    'Quiz not available today. Please try again tomorrow.',
-          q1_english: 'No approved questions found for today.',
-          q1_option_a: '—', q1_option_b: '—', q1_option_c: '—', q1_option_d: '—',
-          q1_verse:   '',
-        };
-        console.log('[Flow] Sending no-question fallback to QUESTION screen');
-        return res.send(encryptResponse({ version, screen: 'QUESTION', data: errData }, aesKey, iv));
-      }
+      // Build WELCOME data — includes all screen variables so old flow renders correctly
+      const q = (!error && questions && questions.length > 0)
+        ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
+        : null;
 
-      const q = questions.find((q: any) => q.slot === 2)
-             || questions.find((q: any) => q.slot === 1)
-             || questions[0];
+      const welcomeData = {
+        quiz_date:    formatHindiDate(today),
+        liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
+        gospel_ref:   readings?.gospel_ref || readings?.first_reading_ref || '—',
+        q1_id:        q ? String(q.id) : '',
+        q1_roman:     q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
+        q1_text:      q?.question_text || 'Quiz not available.',
+        q1_english:   q?.english_question || '',
+        q1_option_a:  q?.option_a || '—',
+        q1_option_b:  q?.option_b || '—',
+        q1_option_c:  q?.option_c || '—',
+        q1_option_d:  q?.option_d || '—',
+        q1_verse:     q?.verse_reference || '',
+      };
+      console.log('[Flow INIT] returning WELCOME data. quiz_date:', welcomeData.quiz_date, '| q1_roman[:40]:', welcomeData.q1_roman.slice(0, 40));
+      return res.send(encryptResponse({ version, screen: 'WELCOME', data: welcomeData }, aesKey, iv));
+    }
+
+    // ── data_exchange: WELCOME → "Start Quiz" tapped (new static flow JSON) ──
+    // New flow: WELCOME is static, no INIT called. Start Quiz button sends data_exchange.
+    // Response navigates to QUESTION screen with question data.
+    if (action === 'data_exchange' && (!screen || screen === 'WELCOME')) {
+      const today = new Date().toISOString().split('T')[0];
+      console.log('[Flow data_exchange WELCOME] Loading question for date:', today);
+
+      const { data: questions, error } = await supabase
+        .from('questions')
+        .select('id, slot, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
+        .eq('quiz_date', today)
+        .eq('status', 'approved')
+        .order('slot', { ascending: true })
+        .limit(5);
+
+      console.log('[Flow data_exchange WELCOME] questions found:', questions?.length ?? 0, '| error:', error?.message);
+
+      const q = (!error && questions && questions.length > 0)
+        ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
+        : null;
 
       const questionData = {
-        q1_id:       String(q.id),
-        q1_roman:    q.question_text || '',
-        q1_text:     q.question_text || '',
-        q1_english:  q.english_question || '',
-        q1_option_a: q.option_a || '',
-        q1_option_b: q.option_b || '',
-        q1_option_c: q.option_c || '',
-        q1_option_d: q.option_d || '',
-        q1_verse:    q.verse_reference || '',
+        q1_id:       q ? String(q.id) : '',
+        q1_roman:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
+        q1_text:     q?.question_text || 'Quiz not available today.',
+        q1_english:  q?.english_question || '',
+        q1_option_a: q?.option_a || '—',
+        q1_option_b: q?.option_b || '—',
+        q1_option_c: q?.option_c || '—',
+        q1_option_d: q?.option_d || '—',
+        q1_verse:    q?.verse_reference || '',
       };
-      console.log('[Flow] Sending question to QUESTION screen. id:', questionData.q1_id, '| q[:50]:', questionData.q1_roman.slice(0, 50));
+      console.log('[Flow data_exchange WELCOME] Sending QUESTION screen. q1_id:', questionData.q1_id);
       return res.send(encryptResponse({ version, screen: 'QUESTION', data: questionData }, aesKey, iv));
     }
 
