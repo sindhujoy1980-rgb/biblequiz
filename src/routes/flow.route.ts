@@ -152,6 +152,58 @@ router.get('/debug', async (_req: Request, res: Response) => {
   }
 });
 
+// ── Diagnostic: GET /api/flow/check-meta-flow ──────────────────────────
+// Fetches the ACTUAL published flow JSON from Meta Graph API.
+// Compares it with what our backend expects.
+router.get('/check-meta-flow', async (_req: Request, res: Response) => {
+  try {
+    const flowId  = process.env.WHATSAPP_FLOW_ID;
+    const token   = process.env.WHATSAPP_ACCESS_TOKEN;
+    if (!flowId || !token) {
+      return res.status(500).json({ error: 'WHATSAPP_FLOW_ID or WHATSAPP_ACCESS_TOKEN not set' });
+    }
+    // Fetch flow status and endpoint
+    const metaUrl = `https://graph.facebook.com/v19.0/${flowId}?fields=id,name,status,validation_errors,data_api_version,endpoint_uri,categories&access_token=${token}`;
+    const r1 = await fetch(metaUrl);
+    const flowMeta = await r1.json() as any;
+
+    // Fetch the actual flow JSON
+    const flowJsonUrl = `https://graph.facebook.com/v19.0/${flowId}/assets?access_token=${token}`;
+    const r2 = await fetch(flowJsonUrl);
+    const flowAssets = await r2.json() as any;
+
+    // Find the flow JSON asset
+    let flowJsonAsset = null;
+    if (flowAssets?.data) {
+      flowJsonAsset = flowAssets.data.find((a: any) => a.asset_type === 'FLOW_JSON');
+    }
+
+    // Parse the flow JSON to check QUESTION screen data schema
+    let questionScreenData: any = null;
+    let parsedFlowJson: any = null;
+    if (flowJsonAsset?.download_url) {
+      const r3 = await fetch(flowJsonAsset.download_url);
+      parsedFlowJson = await r3.json() as any;
+      const questionScreen = parsedFlowJson?.screens?.find((s: any) => s.id === 'QUESTION');
+      questionScreenData = questionScreen?.data ?? null;
+    }
+
+    return res.json({
+      flowId,
+      flowMeta,                  // status, validation_errors, data_api_version, endpoint_uri
+      questionScreenData,        // ← THE KEY: what fields does the published QUESTION screen declare?
+      expectedFields: ['q1_id', 'q1_text', 'q1_english', 'q1_options', 'q1_verse'],
+      actualPublishedFields: questionScreenData ? Object.keys(questionScreenData) : null,
+      mismatch: questionScreenData
+        ? ['q1_id','q1_text','q1_english','q1_options','q1_verse']
+            .filter(f => !questionScreenData[f])
+        : 'could_not_fetch',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message, stack: err.stack?.split('\n').slice(0,5) });
+  }
+});
+
 // ── Helper: write one debug row to Supabase (fail-silently) ──
 async function dbg(step: string, fields: Record<string, string>) {
   try {
