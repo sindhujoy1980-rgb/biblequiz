@@ -74,11 +74,11 @@ router.post('/exchange', async (req: Request, res: Response) => {
   try {
     const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
     const { decryptedBody, aesKey, iv } = decryptRequest({ encrypted_flow_data, encrypted_aes_key, initial_vector });
-    const { action, screen, data, flow_token }: FlowRequest = decryptedBody;
+    const { action, screen, data, flow_token, version } = decryptedBody as any;
 
     // ── Health ping ──────────────────────────────────────────
     if (action === 'ping') {
-      return res.send(encryptResponse({ data: { status: 'active' } }, aesKey, iv));
+      return res.send(encryptResponse({ version, data: { status: 'active' } }, aesKey, iv));
     }
 
     // ── INIT: Load today's single question ───────────────────
@@ -102,15 +102,15 @@ router.post('/exchange', async (req: Request, res: Response) => {
         .single();
 
       if (error || !questions || questions.length === 0) {
-        return res.send(encryptResponse({
-          screen: 'WELCOME',
-          data: {
-            quiz_date: formatHindiDate(today),
-            liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
-            gospel_ref: readings?.gospel_ref || readings?.first_reading_ref || '—',
-            error_message: 'आज की क्विज़ अभी उपलब्ध नहीं है।',
-          },
-        }, aesKey, iv));
+        console.log('[Flow INIT] No questions found. error:', error?.message, 'questions:', questions?.length);
+        const errData = {
+          quiz_date: formatHindiDate(today),
+          liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
+          gospel_ref: readings?.gospel_ref || readings?.first_reading_ref || '—',
+          error_message: 'आज की क्विज़ अभी उपलब्ध नहीं है।',
+        };
+        console.log('[Flow INIT] Sending error data keys:', Object.keys(errData).join(', '));
+        return res.send(encryptResponse({ version, screen: 'WELCOME', data: errData }, aesKey, iv));
       }
 
       // Prefer Gospel question (slot 2), fall back to any approved question
@@ -118,24 +118,23 @@ router.post('/exchange', async (req: Request, res: Response) => {
              || questions.find((q: any) => q.slot === 1)
              || questions[0];
 
-      return res.send(encryptResponse({
-        screen: 'WELCOME',
-        data: {
-          quiz_date: formatHindiDate(today),
+      const initData = {
+          quiz_date:   formatHindiDate(today),
           liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
-          gospel_ref: readings?.gospel_ref || q.verse_reference || '—',
-          // Pre-load question so QUESTION screen can display it
-          q1_id:       q.id,
-          q1_roman:    q.question_text,   // question_roman doesn't exist; use question_text
+          gospel_ref:  readings?.gospel_ref || q.verse_reference || '—',
+          q1_id:       String(q.id),
+          q1_roman:    q.question_text,
           q1_text:     q.question_text,
           q1_english:  q.english_question || '',
           q1_option_a: q.option_a,
           q1_option_b: q.option_b,
           q1_option_c: q.option_c,
           q1_option_d: q.option_d,
-          q1_verse:    q.verse_reference,
-        },
-      }, aesKey, iv));
+          q1_verse:    q.verse_reference || '',
+      };
+      console.log('[Flow INIT] version:', version, 'screen: WELCOME, data keys:', Object.keys(initData).join(', '));
+      console.log('[Flow INIT] Sample values — quiz_date:', initData.quiz_date, '| q1_roman[:50]:', initData.q1_roman?.slice(0, 50));
+      return res.send(encryptResponse({ version, screen: 'WELCOME', data: initData }, aesKey, iv));
     }
 
     // ── data_exchange: User submitted their single answer ────
