@@ -152,49 +152,15 @@ router.post('/exchange', async (req: Request, res: Response) => {
       return res.send(encryptResponse({ version, data: { status: 'active' } }, aesKey, iv));
     }
 
-    // ── INIT: Populate WELCOME screen variables (old-style flow JSON) ────
-    // INIT must return data for the CURRENT screen (WELCOME), NOT navigate elsewhere
+    // ── INIT: Return empty data for the static WELCOME screen ────────────────
+    // CRITICAL: WELCOME screen in flow JSON declares "data": {} (NO variables).
+    // WhatsApp Flow v7+ STRICTLY validates server response against the screen schema.
+    // Returning ANY undeclared fields → "This page couldn't load".
+    // WELCOME is fully static — all text is hardcoded in the flow JSON layout.
+    // Data is only fetched on data_exchange (when user taps Start Quiz).
     if (action === 'init') {
-      const today = new Date().toISOString().split('T')[0];
-      console.log('[Flow INIT] handler entered. today:', today);
-
-      const { data: questions, error } = await supabase
-        .from('questions')
-        .select('id, slot, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
-        .eq('quiz_date', today)
-        .eq('status', 'approved')
-        .order('slot', { ascending: true })
-        .limit(5);
-
-      const { data: readings } = await supabase
-        .from('daily_readings')
-        .select('liturgical_day, gospel_ref, first_reading_ref')
-        .eq('reading_date', today)
-        .single();
-
-      console.log('[Flow INIT] questions:', questions?.length ?? 0, '| error:', error?.message);
-
-      // Build WELCOME data — includes all screen variables so old flow renders correctly
-      const q = (!error && questions && questions.length > 0)
-        ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
-        : null;
-
-      const welcomeData = {
-        quiz_date:    formatHindiDate(today),
-        liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
-        gospel_ref:   readings?.gospel_ref || readings?.first_reading_ref || '—',
-        q1_id:        q ? String(q.id) : '',
-        q1_roman:     q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
-        q1_text:      q?.question_text || 'Quiz not available.',
-        q1_english:   q?.english_question || '',
-        q1_option_a:  q?.option_a || '—',
-        q1_option_b:  q?.option_b || '—',
-        q1_option_c:  q?.option_c || '—',
-        q1_option_d:  q?.option_d || '—',
-        q1_verse:     q?.verse_reference || '',
-      };
-      console.log('[Flow INIT] returning WELCOME data. quiz_date:', welcomeData.quiz_date, '| q1_roman[:40]:', welcomeData.q1_roman.slice(0, 40));
-      return res.send(encryptResponse({ version, screen: 'WELCOME', data: welcomeData }, aesKey, iv));
+      console.log('[Flow INIT] returning empty data:{} for static WELCOME screen');
+      return res.send(encryptResponse({ version, screen: 'WELCOME', data: {} }, aesKey, iv));
     }
 
     // ── data_exchange: WELCOME → "Start Quiz" tapped (new static flow JSON) ──
