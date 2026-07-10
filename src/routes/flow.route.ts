@@ -76,85 +76,81 @@ router.post('/exchange', async (req: Request, res: Response) => {
     const { decryptedBody, aesKey, iv } = decryptRequest({ encrypted_flow_data, encrypted_aes_key, initial_vector });
     const { action: rawAction, screen, data, flow_token, version } = decryptedBody as any;
     const action = (rawAction || '').toLowerCase();
+    process.stderr.write(`[Flow] action=${action} screen=${screen} version=${version}\n`);
     console.log('[Flow] action:', action, '| screen:', screen, '| version:', version);
-    process.stdout.write(`[Flow-entry] action=${action} screen=${screen} version=${version}\n`);
 
     // ── Health ping ──────────────────────────────────────────
     if (action === 'ping') {
       return res.send(encryptResponse({ version, data: { status: 'active' } }, aesKey, iv));
     }
 
-    // ── INIT: Load today's single question ───────────────────
+    // ── INIT (legacy support) ─────────────────────────────────
+    // Note: INIT is often not triggered reliably; use data_exchange on WELCOME instead
     if (action === 'init') {
-      const today = new Date().toISOString().split('T')[0];
-      console.log('[Flow INIT] handler entered. today:', today, 'version:', version);
+      console.log('[Flow] INIT action received (legacy path)');
+      // Fall through to data_exchange WELCOME handler below
+    }
 
-      // Fetch approved question (only columns that exist in admin's questions table)
+    // ── data_exchange: WELCOME screen — "Start Quiz" tapped ──
+    // This is the primary way quiz data is loaded into the QUESTION screen
+    if (action === 'init' || (action === 'data_exchange' && (!screen || screen === 'WELCOME'))) {
+      const today = new Date().toISOString().split('T')[0];
+      console.log('[Flow] Loading question for date:', today);
+
       const { data: questions, error } = await supabase
         .from('questions')
-        .select('id, slot, category, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
+        .select('id, slot, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
         .eq('quiz_date', today)
         .eq('status', 'approved')
         .order('slot', { ascending: true })
         .limit(5);
 
-      // Fetch today's readings (liturgical_day + gospel_ref live here)
       const { data: readings } = await supabase
         .from('daily_readings')
         .select('liturgical_day, gospel_ref, first_reading_ref')
         .eq('reading_date', today)
         .single();
 
-      console.log('[Flow INIT] questions count:', questions?.length ?? 0, '| readings found:', !!readings, '| q error:', error?.message);
+      console.log('[Flow] questions found:', questions?.length ?? 0, '| q error:', error?.message);
 
       if (error || !questions || questions.length === 0) {
-        // Must include ALL declared WELCOME screen variables — WhatsApp rejects partial INIT
         const errData = {
-          quiz_date:    formatHindiDate(today),
-          liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
-          gospel_ref:   readings?.gospel_ref || readings?.first_reading_ref || '—',
-          q1_id:        '',
-          q1_roman:     'आज की क्विज़ अभी उपलब्ध नहीं है।',
-          q1_text:      'Quiz not available for today.',
-          q1_english:   'No approved questions found for today.',
-          q1_option_a:  '—',
-          q1_option_b:  '—',
-          q1_option_c:  '—',
-          q1_option_d:  '—',
-          q1_verse:     '',
+          q1_id:      '',
+          q1_roman:   'आज की क्विज़ अभी उपलब्ध नहीं है। कल पुनः प्रयास करें।',
+          q1_text:    'Quiz not available today. Please try again tomorrow.',
+          q1_english: 'No approved questions found for today.',
+          q1_option_a: '—', q1_option_b: '—', q1_option_c: '—', q1_option_d: '—',
+          q1_verse:   '',
         };
-        console.log('[Flow INIT] No questions — sending fallback. keys:', Object.keys(errData).join(', '));
-        return res.send(encryptResponse({ version, screen: 'WELCOME', data: errData }, aesKey, iv));
+        console.log('[Flow] Sending no-question fallback to QUESTION screen');
+        return res.send(encryptResponse({ version, screen: 'QUESTION', data: errData }, aesKey, iv));
       }
 
-      // Prefer Gospel question (slot 2), fall back to any approved question
       const q = questions.find((q: any) => q.slot === 2)
              || questions.find((q: any) => q.slot === 1)
              || questions[0];
 
-      const initData = {
-          quiz_date:   formatHindiDate(today),
-          liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
-          gospel_ref:  readings?.gospel_ref || q.verse_reference || '—',
-          q1_id:       String(q.id),
-          q1_roman:    q.question_text || '',
-          q1_text:     q.question_text || '',
-          q1_english:  q.english_question || '',
-          q1_option_a: q.option_a || '',
-          q1_option_b: q.option_b || '',
-          q1_option_c: q.option_c || '',
-          q1_option_d: q.option_d || '',
-          q1_verse:    q.verse_reference || '',
+      const questionData = {
+        q1_id:       String(q.id),
+        q1_roman:    q.question_text || '',
+        q1_text:     q.question_text || '',
+        q1_english:  q.english_question || '',
+        q1_option_a: q.option_a || '',
+        q1_option_b: q.option_b || '',
+        q1_option_c: q.option_c || '',
+        q1_option_d: q.option_d || '',
+        q1_verse:    q.verse_reference || '',
       };
-      console.log('[Flow INIT] Sending data. keys:', Object.keys(initData).join(', '));
-      console.log('[Flow INIT] quiz_date:', initData.quiz_date, '| q1_roman[:60]:', initData.q1_roman?.slice(0, 60));
-      return res.send(encryptResponse({ version, screen: 'WELCOME', data: initData }, aesKey, iv));
+      console.log('[Flow] Sending question to QUESTION screen. id:', questionData.q1_id, '| q[:50]:', questionData.q1_roman.slice(0, 50));
+      return res.send(encryptResponse({ version, screen: 'QUESTION', data: questionData }, aesKey, iv));
     }
 
-    // ── data_exchange: User submitted their single answer ────
+    // ── data_exchange: QUESTION screen — user submitted answer ─
     if (action === 'data_exchange' && screen === 'QUESTION') {
       const { q1_id, q1_answer } = data;
       const today = new Date().toISOString().split('T')[0];
+
+      console.log('[Flow] Answer submitted. q1_id:', q1_id, '| answer:', q1_answer);
 
       // Get user phone from JWT flow_token
       const phone = await getUserPhoneFromToken(flow_token);
