@@ -33,6 +33,10 @@ app.use(cors({
   credentials: true,
 }));
 
+// ── Trust Vercel's proxy ─────────────────────────────────────
+// Required for express-rate-limit to work correctly on Vercel
+app.set('trust proxy', 1);
+
 // ── Security: Rate limiting ───────────────────────────────────
 // General: 100 requests per 15 minutes per IP
 const generalLimiter = rateLimit({
@@ -40,13 +44,15 @@ const generalLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false }, // suppress proxy warning — we set it above
   message: { error: 'Too many requests, please try again later.' },
 });
 
-// Flow endpoint: 20 requests per minute (WhatsApp sends bursts)
+// Flow endpoint: 60 requests per minute (Meta may burst)
 const flowLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
+  max: 60,
+  validate: { trustProxy: false },
   message: { error: 'Flow rate limit exceeded.' },
 });
 
