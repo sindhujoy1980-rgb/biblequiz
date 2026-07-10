@@ -90,15 +90,36 @@ router.get('/test-init', async (_req: Request, res: Response) => {
     questionsFound: questions?.length ?? 0,
     questionError: error?.message,
     readingsFound: !!readings,
-    sampleQuestion: q ? { id: q.id, text: q.question_text?.slice(0, 80), slot: q.slot } : null,
-    initWouldReturn: {
+    sampleQuestion: q ? { id: q.id, slot: q.slot } : null,
+    initResponse: {
       screen: 'WELCOME',
       data: {
         quiz_date: formatHindiDate(today),
         liturgical_day: readings?.liturgical_day || '(missing)',
         gospel_ref: readings?.gospel_ref || '(missing)',
-        q1_id: q ? String(q.id) : '(no question)',
-        q1_roman: q?.question_text?.slice(0, 60) || '(no question)',
+        q1_id: q ? String(q.id) : '',
+        q1_roman: q?.question_text || '',
+        q1_text: q?.question_text || '',
+        q1_english: q?.english_question || '',
+        q1_option_a: q?.option_a || '—',
+        q1_option_b: q?.option_b || '—',
+        q1_option_c: q?.option_c || '—',
+        q1_option_d: q?.option_d || '—',
+        q1_verse: q?.verse_reference || '',
+      }
+    },
+    startQuizResponse: {
+      screen: 'QUESTION',
+      data: {
+        q1_id:       q ? String(q.id) : '',
+        q1_roman:    q?.question_text || '',
+        q1_text:     q?.question_text || '',
+        q1_english:  q?.english_question || '',
+        q1_option_a: q?.option_a || '—',
+        q1_option_b: q?.option_b || '—',
+        q1_option_c: q?.option_c || '—',
+        q1_option_d: q?.option_d || '—',
+        q1_verse:    q?.verse_reference || '',
       }
     }
   });
