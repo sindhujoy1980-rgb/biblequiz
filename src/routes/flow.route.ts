@@ -74,7 +74,8 @@ router.post('/exchange', async (req: Request, res: Response) => {
   try {
     const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
     const { decryptedBody, aesKey, iv } = decryptRequest({ encrypted_flow_data, encrypted_aes_key, initial_vector });
-    const { action, screen, data, flow_token, version } = decryptedBody as any;
+    const { action: rawAction, screen, data, flow_token, version } = decryptedBody as any;
+    const action = (rawAction || '').toLowerCase();
     console.log('[Flow] action:', action, '| screen:', screen, '| version:', version);
     process.stdout.write(`[Flow-entry] action=${action} screen=${screen} version=${version}\n`);
 
@@ -84,7 +85,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
     }
 
     // ── INIT: Load today's single question ───────────────────
-    if (action === 'INIT') {
+    if (action === 'init') {
       const today = new Date().toISOString().split('T')[0];
 
       // Fetch approved question (only columns that exist in admin's questions table)
