@@ -177,15 +177,15 @@ async function sendQuizMessage(phone: string, name: string, quizDate: string): P
   // WhatsApp template params CANNOT contain newlines — use ' | ' as separator
   const clean = (s: string) => s.replace(/[\n\r\t]/g, ' ').replace(/ {5,}/g, '    ').trim();
 
-  const liturgicalDay = clean(readings?.liturgical_day || 'Catholic Daily Readings');
+  const liturgicalDay = clean(readings?.liturgical_day || 'Catholic Daily Readings').slice(0, 60);
   const firstReading  = readings?.first_reading_ref
-    ? clean(`📖 ${readings.first_reading_ref} — ${(readings.first_reading_text || '').slice(0, 180)}`)
-    : '(First Reading not available)';
+    ? clean(`${readings.first_reading_ref} — ${(readings.first_reading_text || '').slice(0, 80)}`).slice(0, 150)
+    : 'First Reading not available';
   const gospel        = readings?.gospel_ref
-    ? clean(`📖 ${readings.gospel_ref} — ${(readings.gospel_text || '').slice(0, 180)}`)
-    : '(Gospel not available)';
+    ? clean(`${readings.gospel_ref} — ${(readings.gospel_text || '').slice(0, 80)}`).slice(0, 150)
+    : 'Gospel not available';
   const reflection    = readings?.reflection_en
-    ? clean(`${readings.reflection_en} | ${readings.reflection_hi || ''}`)
+    ? clean(readings.reflection_en).slice(0, 120)
     : "Reflect on today's Gospel and let it guide your day.";
 
   console.log(`[WhatsApp] Sending template "${templateName}" to ${phone} (${firstName})`);
