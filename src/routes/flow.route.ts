@@ -85,40 +85,48 @@ router.post('/exchange', async (req: Request, res: Response) => {
     if (action === 'INIT') {
       const today = new Date().toISOString().split('T')[0];
 
+      // Fetch approved question (only columns that exist in admin's questions table)
       const { data: questions, error } = await supabase
         .from('questions')
-        .select('id, slot, category, question_text, question_roman, english_question, option_a, option_b, option_c, option_d, verse_reference, liturgical_day, gospel_ref')
+        .select('id, slot, category, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
         .eq('quiz_date', today)
         .eq('status', 'approved')
         .order('slot', { ascending: true })
         .limit(5);
+
+      // Fetch today's readings (liturgical_day + gospel_ref live here)
+      const { data: readings } = await supabase
+        .from('daily_readings')
+        .select('liturgical_day, gospel_ref, first_reading_ref')
+        .eq('reading_date', today)
+        .single();
 
       if (error || !questions || questions.length === 0) {
         return res.send(encryptResponse({
           screen: 'WELCOME',
           data: {
             quiz_date: formatHindiDate(today),
-            liturgical_day: 'आज का सुसमाचार',
-            gospel_ref: '—',
+            liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
+            gospel_ref: readings?.gospel_ref || readings?.first_reading_ref || '—',
             error_message: 'आज की क्विज़ अभी उपलब्ध नहीं है।',
           },
         }, aesKey, iv));
       }
 
       // Prefer Gospel question (slot 2), fall back to any approved question
-      const q = questions.find(q => q.slot === 2)
-             || questions.find(q => q.slot === 1)
+      const q = questions.find((q: any) => q.slot === 2)
+             || questions.find((q: any) => q.slot === 1)
              || questions[0];
 
       return res.send(encryptResponse({
         screen: 'WELCOME',
         data: {
           quiz_date: formatHindiDate(today),
-          liturgical_day: q.liturgical_day || 'आज का सुसमाचार',
-          gospel_ref: q.gospel_ref || q.verse_reference || '—',
+          liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
+          gospel_ref: readings?.gospel_ref || q.verse_reference || '—',
           // Pre-load question so QUESTION screen can display it
           q1_id:       q.id,
-          q1_roman:    q.question_roman || q.question_text,
+          q1_roman:    q.question_text,   // question_roman doesn't exist; use question_text
           q1_text:     q.question_text,
           q1_english:  q.english_question || '',
           q1_option_a: q.option_a,
