@@ -174,16 +174,18 @@ async function sendQuizMessage(phone: string, name: string, quizDate: string): P
     day: 'numeric', month: 'long', year: 'numeric', weekday: 'long',
   });
 
-  // Build template variable values (trimmed to stay within 1024 char body limit)
-  const liturgicalDay  = readings?.liturgical_day || 'Catholic Daily Readings';
-  const firstReading   = readings?.first_reading_ref
-    ? `📖 ${readings.first_reading_ref}\n${(readings.first_reading_text || '').slice(0, 180)}`
+  // WhatsApp template params CANNOT contain newlines — use ' | ' as separator
+  const clean = (s: string) => s.replace(/[\n\r\t]/g, ' ').replace(/ {5,}/g, '    ').trim();
+
+  const liturgicalDay = clean(readings?.liturgical_day || 'Catholic Daily Readings');
+  const firstReading  = readings?.first_reading_ref
+    ? clean(`📖 ${readings.first_reading_ref} — ${(readings.first_reading_text || '').slice(0, 180)}`)
     : '(First Reading not available)';
-  const gospel         = readings?.gospel_ref
-    ? `📖 ${readings.gospel_ref}\n${(readings.gospel_text || '').slice(0, 180)}`
+  const gospel        = readings?.gospel_ref
+    ? clean(`📖 ${readings.gospel_ref} — ${(readings.gospel_text || '').slice(0, 180)}`)
     : '(Gospel not available)';
-  const reflection     = readings?.reflection_en
-    ? `${readings.reflection_en}\n${readings.reflection_hi || ''}`
+  const reflection    = readings?.reflection_en
+    ? clean(`${readings.reflection_en} | ${readings.reflection_hi || ''}`)
     : "Reflect on today's Gospel and let it guide your day.";
 
   console.log(`[WhatsApp] Sending template "${templateName}" to ${phone} (${firstName})`);
