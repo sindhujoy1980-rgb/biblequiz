@@ -235,36 +235,31 @@ router.post('/exchange', async (req: Request, res: Response) => {
         ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
         : null;
 
+      // CRITICAL: Send ONLY the 5 fields declared in the QUESTION screen data schema.
+      // WhatsApp Flow v7.1 REJECTS responses that contain undeclared fields.
+      // Schema declares: q1_id, q1_text, q1_english, q1_options, q1_verse
       const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || '—';
       const optA = cleanOpt(q?.option_a || '');
       const optB = cleanOpt(q?.option_b || '');
       const optC = cleanOpt(q?.option_c || '');
       const optD = cleanOpt(q?.option_d || '');
-      const questionText = q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।';
+
       const questionData = {
-        // ── Primary question fields ────────────────────────────────────
-        q1_id:       q ? String(q.id) : '',
-        q1_text:     questionText,
-        q1_roman:    questionText,          // alias (some flow JSON versions use q1_roman)
-        q1_english:  q?.english_question || '',
-        q1_verse:    q?.verse_reference || '',
-
-        // ── Combined options string (flow JSON TextBody format) ────────
-        // Format: "A) option | B) option | C) option | D) option"
+        q1_id:      q ? String(q.id) : '',
+        q1_text:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
+        q1_english: q?.english_question || '',
         q1_options: q
-          ? `A) ${optA} | B) ${optB} | C) ${optC} | D) ${optD}`
+          ? `A) ${optA}\nB) ${optB}\nC) ${optC}\nD) ${optD}`
           : 'Quiz not available today.',
-
-        // ── Individual option fields (RadioButtonsGroup / TextBody alt)
-        // Included so the response works regardless of which field names
-        // the flow JSON data schema declares.
-        q1_option_a: optA,
-        q1_option_b: optB,
-        q1_option_c: optC,
-        q1_option_d: optD,
+        q1_verse:   q?.verse_reference || '',
       };
-      console.log('[Flow:DE_WELCOME] sending QUESTION. q1_id:', questionData.q1_id, '| text[:30]:', questionData.q1_text.slice(0, 30), '| optA:', optA.slice(0, 20));
-      await dbg('DE_WELCOME_RESP', { action, response_screen: 'QUESTION', notes: `q1_id=${questionData.q1_id} optA=${optA.slice(0,15)}` });
+
+      console.log('[Flow:QUESTION_DATA] q1_id:', questionData.q1_id, '| optA[:20]:', optA.slice(0, 20));
+      await dbg('DE_WELCOME_RESP', {
+        action,
+        response_screen: 'QUESTION',
+        notes: `q1_id=${questionData.q1_id} q1_text_len=${questionData.q1_text.length} optA=${optA.slice(0, 15)}`,
+      });
       return res.send(encryptResponse({ version, screen: 'QUESTION', data: questionData }, aesKey, iv));
     }
 
