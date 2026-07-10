@@ -90,8 +90,8 @@ router.post('/exchange', async (req: Request, res: Response) => {
         .select('id, slot, category, question_text, question_roman, english_question, option_a, option_b, option_c, option_d, verse_reference, liturgical_day, gospel_ref')
         .eq('quiz_date', today)
         .eq('status', 'approved')
-        .eq('slot', 1)
-        .limit(1);
+        .order('slot', { ascending: true })
+        .limit(5);
 
       if (error || !questions || questions.length === 0) {
         return res.send(encryptResponse({
@@ -105,7 +105,10 @@ router.post('/exchange', async (req: Request, res: Response) => {
         }, aesKey, iv));
       }
 
-      const q = questions[0];
+      // Prefer Gospel question (slot 2), fall back to any approved question
+      const q = questions.find(q => q.slot === 2)
+             || questions.find(q => q.slot === 1)
+             || questions[0];
 
       return res.send(encryptResponse({
         screen: 'WELCOME',
