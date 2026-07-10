@@ -230,9 +230,12 @@ router.post('/exchange', async (req: Request, res: Response) => {
     // Default passthrough
     return res.send(encryptResponse({ screen, data: {} }, aesKey, iv));
 
-  } catch (err) {
-    console.error('[Flow Exchange Error]', err);
-    return res.status(500).json({ error: 'Internal server error' });
+  } catch (err: any) {
+    console.error('[Flow Exchange Error] type:', err?.constructor?.name);
+    console.error('[Flow Exchange Error] message:', err?.message);
+    console.error('[Flow Exchange Error] WHATSAPP_FLOW_PRIVATE_KEY set:', !!process.env.WHATSAPP_FLOW_PRIVATE_KEY);
+    console.error('[Flow Exchange Error] SUPABASE_URL set:', !!process.env.SUPABASE_URL);
+    return res.status(500).json({ error: 'Internal server error', detail: err?.message });
   }
 });
 
