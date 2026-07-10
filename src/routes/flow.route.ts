@@ -87,6 +87,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
     // ── INIT: Load today's single question ───────────────────
     if (action === 'init') {
       const today = new Date().toISOString().split('T')[0];
+      console.log('[Flow INIT] handler entered. today:', today, 'version:', version);
 
       // Fetch approved question (only columns that exist in admin's questions table)
       const { data: questions, error } = await supabase
@@ -104,15 +105,25 @@ router.post('/exchange', async (req: Request, res: Response) => {
         .eq('reading_date', today)
         .single();
 
+      console.log('[Flow INIT] questions count:', questions?.length ?? 0, '| readings found:', !!readings, '| q error:', error?.message);
+
       if (error || !questions || questions.length === 0) {
-        console.log('[Flow INIT] No questions found. error:', error?.message, 'questions:', questions?.length);
+        // Must include ALL declared WELCOME screen variables — WhatsApp rejects partial INIT
         const errData = {
-          quiz_date: formatHindiDate(today),
+          quiz_date:    formatHindiDate(today),
           liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
-          gospel_ref: readings?.gospel_ref || readings?.first_reading_ref || '—',
-          error_message: 'आज की क्विज़ अभी उपलब्ध नहीं है।',
+          gospel_ref:   readings?.gospel_ref || readings?.first_reading_ref || '—',
+          q1_id:        '',
+          q1_roman:     'आज की क्विज़ अभी उपलब्ध नहीं है।',
+          q1_text:      'Quiz not available for today.',
+          q1_english:   'No approved questions found for today.',
+          q1_option_a:  '—',
+          q1_option_b:  '—',
+          q1_option_c:  '—',
+          q1_option_d:  '—',
+          q1_verse:     '',
         };
-        console.log('[Flow INIT] Sending error data keys:', Object.keys(errData).join(', '));
+        console.log('[Flow INIT] No questions — sending fallback. keys:', Object.keys(errData).join(', '));
         return res.send(encryptResponse({ version, screen: 'WELCOME', data: errData }, aesKey, iv));
       }
 
@@ -126,17 +137,17 @@ router.post('/exchange', async (req: Request, res: Response) => {
           liturgical_day: readings?.liturgical_day || 'आज का सुसमाचार',
           gospel_ref:  readings?.gospel_ref || q.verse_reference || '—',
           q1_id:       String(q.id),
-          q1_roman:    q.question_text,
-          q1_text:     q.question_text,
+          q1_roman:    q.question_text || '',
+          q1_text:     q.question_text || '',
           q1_english:  q.english_question || '',
-          q1_option_a: q.option_a,
-          q1_option_b: q.option_b,
-          q1_option_c: q.option_c,
-          q1_option_d: q.option_d,
+          q1_option_a: q.option_a || '',
+          q1_option_b: q.option_b || '',
+          q1_option_c: q.option_c || '',
+          q1_option_d: q.option_d || '',
           q1_verse:    q.verse_reference || '',
       };
-      console.log('[Flow INIT] version:', version, 'screen: WELCOME, data keys:', Object.keys(initData).join(', '));
-      console.log('[Flow INIT] Sample values — quiz_date:', initData.quiz_date, '| q1_roman[:50]:', initData.q1_roman?.slice(0, 50));
+      console.log('[Flow INIT] Sending data. keys:', Object.keys(initData).join(', '));
+      console.log('[Flow INIT] quiz_date:', initData.quiz_date, '| q1_roman[:60]:', initData.q1_roman?.slice(0, 60));
       return res.send(encryptResponse({ version, screen: 'WELCOME', data: initData }, aesKey, iv));
     }
 
