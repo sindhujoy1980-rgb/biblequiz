@@ -75,6 +75,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
     const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
     const { decryptedBody, aesKey, iv } = decryptRequest({ encrypted_flow_data, encrypted_aes_key, initial_vector });
     const { action, screen, data, flow_token, version } = decryptedBody as any;
+    console.log('[Flow] action:', action, '| screen:', screen, '| version:', version);
 
     // ── Health ping ──────────────────────────────────────────
     if (action === 'ping') {
