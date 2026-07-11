@@ -179,20 +179,27 @@ router.get('/check-meta-flow', async (_req: Request, res: Response) => {
       flowJsonAsset = flowAssets.data.find((a: any) => a.asset_type === 'FLOW_JSON');
     }
 
-    // Parse the flow JSON to check QUESTION screen data schema
+    // Parse the flow JSON to check QUESTION screen data schema AND layout
     let questionScreenData: any = null;
+    let questionScreenLayout: any = null;
+    let allScreenIds: string[] = [];
     let parsedFlowJson: any = null;
     if (flowJsonAsset?.download_url) {
       const r3 = await fetch(flowJsonAsset.download_url);
       parsedFlowJson = await r3.json() as any;
+      allScreenIds = (parsedFlowJson?.screens ?? []).map((s: any) => s.id);
       const questionScreen = parsedFlowJson?.screens?.find((s: any) => s.id === 'QUESTION');
-      questionScreenData = questionScreen?.data ?? null;
+      questionScreenData   = questionScreen?.data ?? null;
+      // Return full layout so we can inspect exact component text/variable references
+      questionScreenLayout = questionScreen?.layout ?? null;
     }
 
     return res.json({
       flowId,
-      flowMeta,                  // status, validation_errors, data_api_version, endpoint_uri
-      questionScreenData,        // ← THE KEY: what fields does the published QUESTION screen declare?
+      flowMeta,
+      allScreenIds,               // ALL screen IDs in the flow
+      questionScreenData,         // field schema declared in QUESTION screen
+      questionScreenLayout,       // ← FULL LAYOUT: exact component text/variable refs
       expectedFields: ['q1_id', 'q1_text', 'q1_english', 'q1_options', 'q1_verse'],
       actualPublishedFields: questionScreenData ? Object.keys(questionScreenData) : null,
       fieldNamesMatch: questionScreenData
