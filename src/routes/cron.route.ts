@@ -104,28 +104,30 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
       return res.status(500).json({ success: false, error: 'Failed to fetch users' });
     }
 
-    console.log(`[Cron] Sending quiz to ${users.length} users for ${today}...`);
+    console.log(`[Cron] Sending quiz to ${users.length} users for ${today} (parallel)...`);
+
+    const results = await Promise.allSettled(
+      users.map(user => sendQuizMessage(user.phone, user.name, today))
+    );
 
     let sent = 0;
     let failed = 0;
     const failedPhones: string[] = [];
     const debugResults: any[] = [];
 
-    for (const user of users) {
-      try {
-        console.log(`[Send] Attempting → phone: ${user.phone}, name: ${user.name}`);
-        const msgId = await sendQuizMessage(user.phone, user.name, today);
+    results.forEach((result, i) => {
+      const user = users[i];
+      if (result.status === 'fulfilled') {
         sent++;
-        debugResults.push({ phone: user.phone, status: 'sent', messageId: msgId });
-        console.log(`[Send] ✅ Success for ${user.phone}, messageId: ${msgId}`);
-        await new Promise(r => setTimeout(r, 50)); // rate limit buffer
-      } catch (err: any) {
-        console.error(`[Send] ❌ Failed for ${user.phone}:`, err.message);
+        debugResults.push({ phone: user.phone, status: 'sent', messageId: result.value });
+        console.log(`[Send] ✅ ${user.phone} messageId=${result.value}`);
+      } else {
         failed++;
         failedPhones.push(user.phone);
-        debugResults.push({ phone: user.phone, status: 'failed', error: err.message });
+        debugResults.push({ phone: user.phone, status: 'failed', error: result.reason?.message });
+        console.error(`[Send] ❌ ${user.phone}:`, result.reason?.message);
       }
-    }
+    });
 
     await supabase
       .from('quizzes')

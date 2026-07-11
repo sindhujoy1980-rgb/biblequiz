@@ -291,7 +291,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
 
       const { data: questions, error } = await supabase
         .from('questions')
-        .select('id, slot, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
+        .select('id, slot, category, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
         .eq('quiz_date', today)
         .not('status', 'eq', 'rejected')
         .order('slot', { ascending: true })
