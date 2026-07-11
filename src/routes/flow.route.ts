@@ -284,6 +284,22 @@ router.post('/exchange', async (req: Request, res: Response) => {
     if (action === 'data_exchange' && (!screen || screen === 'WELCOME')) {
       await dbg('DE_WELCOME', { action, screen: screen ?? '', notes: `date=${today}` });
 
+      // ── Already-answered guard: send to COMPLETE if user already submitted today ──
+      const phoneFromToken = await getUserPhoneFromToken(flow_token);
+      if (phoneFromToken) {
+        const { data: existingUser } = await supabase
+          .from('users').select('id').eq('phone', phoneFromToken).eq('status', 'active').single();
+        if (existingUser) {
+          const { data: todayScore } = await supabase
+            .from('scores').select('id').eq('user_id', existingUser.id).eq('quiz_date', today).maybeSingle();
+          if (todayScore) {
+            await dbg('DE_WELCOME_ALREADY_DONE', { action, notes: `user ${existingUser.id} already answered today` });
+            return res.send(encryptResponse({ version, screen: 'COMPLETE', data: {} }, aesKey, iv));
+          }
+        }
+      }
+
+
       const { data: questions, error } = await supabase
         .from('questions')
         .select('id, slot, category, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
@@ -417,10 +433,9 @@ router.post('/exchange', async (req: Request, res: Response) => {
       const correctLabel = `${ca}) ${cleanOpt(optMap[ca] || '')}`;
 
       const summaryData = {
-        result:        isCorrect ? 'Correct!' : 'Incorrect!',
-        correct_label: 'सही उत्तर / Correct Answer: ' + correctLabel,
-        explanation:   question.explanation || '',
-        rank_label:    'आज की रैंक / Today\'s Rank: #' + String(rank),
+        result:     isCorrect ? 'Correct!' : 'Incorrect!',
+        rank_label: 'Today\'s Rank: #' + String(rank),
+        thank_you:  'Your response has been recorded. See you tomorrow!',
       };
 
       await dbg('DE_QUESTION_RESP', {
@@ -483,12 +498,10 @@ async function buildSummary(userId: string, quizDate: string, q1Id: string) {
   };
   const ca = (question?.correct_answer || '').toUpperCase();
 
-  const caLabel = `${ca}) ${optMap[ca] || ''}`;
   return {
-    result:        response?.is_correct ? 'Correct!' : 'Incorrect!',
-    correct_label: 'सही उत्तर / Correct Answer: ' + caLabel,
-    explanation:   question?.explanation || '',
-    rank_label:    'आज की रैंक / Today\'s Rank: #' + String(scoreRow?.rank ?? '-'),
+    result:     response?.is_correct ? 'Correct!' : 'Incorrect!',
+    rank_label: 'Today\'s Rank: #' + String(scoreRow?.rank ?? '-'),
+    thank_you:  'Your response has been recorded. See you tomorrow!',
   };
 }
 
