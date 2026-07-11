@@ -96,17 +96,22 @@ router.get('/test-exchange', async (_req: Request, res: Response) => {
 
     const questionData = q ? {
       q_id:      String(q.id),
-      q_text:    q.question_text   || 'आज का प्रश्न उपलब्ध नहीं।',
+      q_text:    q.question_text    || 'आज का प्रश्न उपलब्ध नहीं।',
       q_english: q.english_question || '',
-      q_opt_a:   cleanOpt(q.option_a),
-      q_opt_b:   cleanOpt(q.option_b),
-      q_opt_c:   cleanOpt(q.option_c),
-      q_opt_d:   cleanOpt(q.option_d),
-      q_verse:   q.verse_reference || '',
+      q_verse:   q.verse_reference  || '',
+      q_options: [
+        { id: 'A', title: `A) ${cleanOpt(q.option_a)}` },
+        { id: 'B', title: `B) ${cleanOpt(q.option_b)}` },
+        { id: 'C', title: `C) ${cleanOpt(q.option_c)}` },
+        { id: 'D', title: `D) ${cleanOpt(q.option_d)}` },
+      ],
     } : {
       q_id: '', q_text: 'आज की क्विज़ उपलब्ध नहीं है।',
-      q_english: 'Quiz not available today.',
-      q_opt_a: '—', q_opt_b: '—', q_opt_c: '—', q_opt_d: '—', q_verse: '',
+      q_english: 'Quiz not available today.', q_verse: '',
+      q_options: [
+        { id: 'A', title: 'A) —' }, { id: 'B', title: 'B) —' },
+        { id: 'C', title: 'C) —' }, { id: 'D', title: 'D) —' },
+      ],
     };
 
     const fullResponse = { version: '3.0', screen: 'QUESTION', data: questionData };
@@ -120,20 +125,11 @@ router.get('/test-exchange', async (_req: Request, res: Response) => {
       selectedId:       q?.id ?? null,
       selectedCategory: (q as any)?.category ?? null,
       selectedStatus:   (q as any)?.status ?? null,
-      fieldLengths: {
-        q_id:      questionData.q_id.length,
-        q_text:    questionData.q_text.length,
-        q_english: questionData.q_english.length,
-        q_opt_a:   questionData.q_opt_a.length,
-        q_opt_b:   questionData.q_opt_b.length,
-        q_opt_c:   questionData.q_opt_c.length,
-        q_opt_d:   questionData.q_opt_d.length,
-        q_verse:   questionData.q_verse.length,
-      },
-      questionData,   // ← exact data being sent to QUESTION screen
-      fullResponse,   // ← full response being encrypted { version, screen, data }
+      optionsCount:     questionData.q_options.length,
+      questionData,
+      fullResponse,
       jsonLength:  jsonStr.length,
-      jsonPreview: jsonStr.substring(0, 400),
+      jsonPreview: jsonStr.substring(0, 500),
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -273,9 +269,9 @@ router.post('/exchange', async (req: Request, res: Response) => {
     }
 
     const today   = new Date().toISOString().split('T')[0];
-    const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || 'â€”';
+    const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || '—';
 
-    // â”€â”€ INIT â†’ Return WELCOME screen with today's date â”€â”€â”€â”€â”€â”€â”€
+    // ── INIT → Return WELCOME screen with today's date ──────────
     if (action === 'init') {
       const hindiDate = formatHindiDate(today);
       await dbg('INIT', { action, response_screen: 'WELCOME', notes: `date=${today}` });
@@ -285,7 +281,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
       }, aesKey, iv));
     }
 
-    // â”€â”€ data_exchange: WELCOME "Start Quiz" â†’ serve Gospel question â”€â”€
+    // ── data_exchange: WELCOME "Start Quiz" → serve Gospel question ─────
     if (action === 'data_exchange' && (!screen || screen === 'WELCOME')) {
       await dbg('DE_WELCOME', { action, screen: screen ?? '', notes: `date=${today}` });
 
@@ -310,18 +306,23 @@ router.post('/exchange', async (req: Request, res: Response) => {
         : null;
 
       const questionData = q ? {
-        q_id:     String(q.id),
-        q_text:   q.question_text  || 'à¤†à¤œ à¤•à¤¾ à¤ªà¥à¤°à¤¶à¥à¤¨ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚à¥¤',
+        q_id:      String(q.id),
+        q_text:    q.question_text    || 'आज का प्रश्न उपलब्ध नहीं।',
         q_english: q.english_question || '',
-        q_opt_a:  cleanOpt(q.option_a),
-        q_opt_b:  cleanOpt(q.option_b),
-        q_opt_c:  cleanOpt(q.option_c),
-        q_opt_d:  cleanOpt(q.option_d),
-        q_verse:  q.verse_reference || '',
+        q_verse:   q.verse_reference  || '',
+        q_options: [
+          { id: 'A', title: `A) ${cleanOpt(q.option_a)}` },
+          { id: 'B', title: `B) ${cleanOpt(q.option_b)}` },
+          { id: 'C', title: `C) ${cleanOpt(q.option_c)}` },
+          { id: 'D', title: `D) ${cleanOpt(q.option_d)}` },
+        ],
       } : {
-        q_id: '', q_text: 'à¤†à¤œ à¤•à¥€ à¤•à¥à¤µà¤¿à¤œà¤¼ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤',
-        q_english: 'Quiz not available today.',
-        q_opt_a: 'â€”', q_opt_b: 'â€”', q_opt_c: 'â€”', q_opt_d: 'â€”', q_verse: '',
+        q_id: '', q_text: 'आज की क्विज़ उपलब्ध नहीं है।',
+        q_english: 'Quiz not available today.', q_verse: '',
+        q_options: [
+          { id: 'A', title: 'A) —' }, { id: 'B', title: 'B) —' },
+          { id: 'C', title: 'C) —' }, { id: 'D', title: 'D) —' },
+        ],
       };
 
       await dbg('DE_WELCOME_RESP', {
