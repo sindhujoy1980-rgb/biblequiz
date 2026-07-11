@@ -96,16 +96,11 @@ router.get('/test-exchange', async (_req: Request, res: Response) => {
 
     // EXACT questionData as built in real handler
     const questionData = {
-      q1_id:       q ? String(q.id) : '',
-      q1_roman:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
-      q1_text:     q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
-      q1_english:  q?.english_question || '',
-      q1_verse:    q?.verse_reference || '',
-      q1_option_a: optA,
-      q1_option_b: optB,
-      q1_option_c: optC,
-      q1_option_d: optD,
-      q1_options:  q ? `A) ${optA}\nB) ${optB}\nC) ${optC}\nD) ${optD}` : 'Quiz not available today.',
+      q1_id:      q ? String(q.id) : '',
+      q1_text:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
+      q1_english: q?.english_question || '',
+      q1_options: q ? `A) ${optA}\nB) ${optB}\nC) ${optC}\nD) ${optD}` : 'Quiz not available today.',
+      q1_verse:   q?.verse_reference || '',
     };
 
     // Full response object that gets encrypted
@@ -198,10 +193,13 @@ router.get('/check-meta-flow', async (_req: Request, res: Response) => {
       flowId,
       flowMeta,                  // status, validation_errors, data_api_version, endpoint_uri
       questionScreenData,        // ← THE KEY: what fields does the published QUESTION screen declare?
-      expectedFields: ['q1_id', 'q1_roman', 'q1_text', 'q1_english', 'q1_verse', 'q1_option_a', 'q1_option_b', 'q1_option_c', 'q1_option_d', 'q1_options'],
+      expectedFields: ['q1_id', 'q1_text', 'q1_english', 'q1_options', 'q1_verse'],
       actualPublishedFields: questionScreenData ? Object.keys(questionScreenData) : null,
+      fieldNamesMatch: questionScreenData
+        ? ['q1_id','q1_text','q1_english','q1_options','q1_verse'].every(f => !!questionScreenData[f])
+        : false,
       mismatch: questionScreenData
-        ? ['q1_id','q1_roman','q1_text','q1_english','q1_verse','q1_option_a','q1_option_b','q1_option_c','q1_option_d']
+        ? ['q1_id','q1_text','q1_english','q1_options','q1_verse']
             .filter(f => !questionScreenData[f])
         : 'could_not_fetch',
     });
@@ -302,27 +300,17 @@ router.post('/exchange', async (req: Request, res: Response) => {
       const optD = cleanOpt(q?.option_d || '');
 
       const questionData = {
-        q1_id:       q ? String(q.id) : '',
-        // q1_roman: Flow JSON QUESTION screen declares this field by this name.
-        // It maps to question_text (the Hindi question). If your Flow JSON uses
-        // a different key, update this to match.
-        q1_roman:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
-        q1_text:     q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
-        q1_english:  q?.english_question || '',
-        q1_verse:    q?.verse_reference || '',
-        // Individual options — required by the Flow JSON RadioButtonsGroup
-        q1_option_a: optA,
-        q1_option_b: optB,
-        q1_option_c: optC,
-        q1_option_d: optD,
-        // Combined fallback kept for any legacy screen references
+        q1_id:      q ? String(q.id) : '',
+        q1_text:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
+        q1_english: q?.english_question || '',
         q1_options: q ? `A) ${optA}\nB) ${optB}\nC) ${optC}\nD) ${optD}` : 'Quiz not available today.',
+        q1_verse:   q?.verse_reference || '',
       };
 
       await dbg('INIT_QUESTION', {
         action: 'init',
         response_screen: 'QUESTION',
-        notes: `q1_id=${questionData.q1_id} q1_roman_len=${questionData.q1_roman.length} found=${questions?.length ?? 0}`,
+        notes: `q1_id=${questionData.q1_id} q1_text_len=${questionData.q1_text.length} found=${questions?.length ?? 0}`,
         error_msg: error?.message ?? '',
       });
       return res.send(encryptResponse({ version, screen: 'QUESTION', data: questionData }, aesKey, iv));
@@ -364,28 +352,20 @@ router.post('/exchange', async (req: Request, res: Response) => {
       const optD = cleanOpt(q?.option_d || '');
 
       const questionData = {
-        q1_id:       q ? String(q.id) : '',
-        // q1_roman maps to the Hindi question text — required by Flow JSON QUESTION screen schema
-        q1_roman:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
-        q1_text:     q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
-        q1_english:  q?.english_question || '',
-        q1_verse:    q?.verse_reference || '',
-        // Individual options — required by the Flow JSON RadioButtonsGroup component
-        q1_option_a: optA,
-        q1_option_b: optB,
-        q1_option_c: optC,
-        q1_option_d: optD,
-        // Combined fallback kept for any legacy screen references
+        q1_id:      q ? String(q.id) : '',
+        q1_text:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
+        q1_english: q?.english_question || '',
         q1_options: q
           ? `A) ${optA}\nB) ${optB}\nC) ${optC}\nD) ${optD}`
           : 'Quiz not available today.',
+        q1_verse:   q?.verse_reference || '',
       };
 
       console.log('[Flow:QUESTION_DATA] q1_id:', questionData.q1_id, '| optA[:20]:', optA.slice(0, 20));
       await dbg('DE_WELCOME_RESP', {
         action,
         response_screen: 'QUESTION',
-        notes: `q1_id=${questionData.q1_id} q1_roman_len=${questionData.q1_roman.length} optA=${optA.slice(0, 15)}`,
+        notes: `q1_id=${questionData.q1_id} q1_text_len=${questionData.q1_text.length} optA=${optA.slice(0, 15)}`,
       });
       return res.send(encryptResponse({ version, screen: 'QUESTION', data: questionData }, aesKey, iv));
     }
