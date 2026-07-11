@@ -84,10 +84,11 @@ router.get('/test-exchange', async (_req: Request, res: Response) => {
       .order('slot', { ascending: true })
       .limit(5);
 
-    // Same priority as real handler: slot=1 first, then slot=2, then any
+    // Priority: Gospel category first (NT-Gospel or Gospel), then slot=1, then any
+    const isGospel = (q: any) => ['NT-Gospel', 'Gospel'].includes(q.category);
     const q = (!error && questions && questions.length > 0)
-      ? (questions.find((q: any) => q.slot === 1)
-        || questions.find((q: any) => q.slot === 2)
+      ? (questions.find(isGospel)
+        || questions.find((q: any) => q.slot === 1)
         || questions[0])
       : null;
 
@@ -300,10 +301,11 @@ router.post('/exchange', async (req: Request, res: Response) => {
         action, notes: `found=${questions?.length ?? 0} error=${error?.message ?? 'none'}`,
       });
 
-      // Pick slot=1 first (new single-question), fall back to slot=2 or any
+      // Priority: Gospel category first (NT-Gospel or Gospel), then slot=1, then any
+      const isGospel = (q: any) => ['NT-Gospel', 'Gospel'].includes(q.category);
       const q = (!error && questions && questions.length > 0)
-        ? (questions.find((q: any) => q.slot === 1)
-          || questions.find((q: any) => q.slot === 2)
+        ? (questions.find(isGospel)
+          || questions.find((q: any) => q.slot === 1)
           || questions[0])
         : null;
 
