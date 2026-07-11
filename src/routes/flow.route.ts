@@ -1,7 +1,7 @@
-// ============================================================
+﻿// ============================================================
 // src/routes/flow.route.ts
-// WhatsApp Flow Data Exchange — SINGLE QUESTION per day
-// POST /api/flow/exchange  ← Meta calls this
+// WhatsApp Flow Data Exchange â€” SINGLE QUESTION per day
+// POST /api/flow/exchange  â† Meta calls this
 // ============================================================
 
 import { Router, Request, Response } from 'express';
@@ -15,7 +15,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ── Types ─────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface FlowPayload {
   q1_id: string;
   q1_answer: 'A' | 'B' | 'C' | 'D';
@@ -29,7 +29,7 @@ interface FlowRequest {
   flow_token: string;
 }
 
-// ── Decrypt WhatsApp Flow request ─────────────────────────────
+// â”€â”€ Decrypt WhatsApp Flow request â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function decryptRequest(body: {
   encrypted_flow_data: string;
   encrypted_aes_key: string;
@@ -55,7 +55,7 @@ function decryptRequest(body: {
   return { decryptedBody: JSON.parse(decryptedJSON), aesKey, iv };
 }
 
-// ── Encrypt response back to WhatsApp ────────────────────────
+// â”€â”€ Encrypt response back to WhatsApp â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function encryptResponse(response: object, aesKey: Buffer, iv: Buffer): string {
   const flippedIV = Buffer.alloc(iv.length);
   for (let i = 0; i < iv.length; i++) flippedIV[i] = ~iv[i];
@@ -69,7 +69,7 @@ function encryptResponse(response: object, aesKey: Buffer, iv: Buffer): string {
   return encrypted.toString('base64');
 }
 
-// ── Diagnostic: GET /api/flow/test-exchange ──────────────────────────
+// â”€â”€ Diagnostic: GET /api/flow/test-exchange â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Shows EXACTLY what JSON would be encrypted and sent for QUESTION screen
 // Call: https://biblequiz-five.vercel.app/api/flow/test-exchange
 router.get('/test-exchange', async (_req: Request, res: Response) => {
@@ -88,7 +88,7 @@ router.get('/test-exchange', async (_req: Request, res: Response) => {
       ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
       : null;
 
-    const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || '—';
+    const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || 'â€”';
     const optA = cleanOpt(q?.option_a || '');
     const optB = cleanOpt(q?.option_b || '');
     const optC = cleanOpt(q?.option_c || '');
@@ -97,7 +97,7 @@ router.get('/test-exchange', async (_req: Request, res: Response) => {
     // EXACT questionData as built in real handler
     const questionData = {
       q1_id:      q ? String(q.id) : '',
-      q1_text:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
+      q1_text:    q?.question_text || 'à¤†à¤œ à¤•à¥€ à¤•à¥à¤µà¤¿à¤œà¤¼ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤',
       q1_english: q?.english_question || '',
       q1_options: q ? `A) ${optA}\nB) ${optB}\nC) ${optC}\nD) ${optD}` : 'Quiz not available today.',
       q1_verse:   q?.verse_reference || '',
@@ -128,8 +128,8 @@ router.get('/test-exchange', async (_req: Request, res: Response) => {
         q1_options_empty: questionData.q1_options === '',
         q1_verse_empty:   questionData.q1_verse === '',
       },
-      questionData,   // ← exact data being sent to QUESTION screen
-      fullResponse,   // ← full response being encrypted { version, screen, data }
+      questionData,   // â† exact data being sent to QUESTION screen
+      fullResponse,   // â† full response being encrypted { version, screen, data }
       jsonLength:     jsonStr.length,
       jsonPreview:    jsonStr.substring(0, 300),  // first 300 chars of JSON
     });
@@ -138,7 +138,7 @@ router.get('/test-exchange', async (_req: Request, res: Response) => {
   }
 });
 
-// ── Debug: read the last 20 flow exchange logs ───────────────
+// â”€â”€ Debug: read the last 20 flow exchange logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.get('/debug', async (_req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
@@ -146,14 +146,14 @@ router.get('/debug', async (_req: Request, res: Response) => {
       .select('*')
       .order('created_at', { ascending: false })
       .limit(20);
-    if (error) return res.json({ error: error.message, hint: 'Table may not exist yet — see instructions below', sql: 'CREATE TABLE flow_debug_logs (id BIGSERIAL PRIMARY KEY, created_at TIMESTAMPTZ DEFAULT NOW(), step TEXT, action TEXT, screen TEXT, body_keys TEXT, error_msg TEXT, response_screen TEXT, notes TEXT);' });
+    if (error) return res.json({ error: error.message, hint: 'Table may not exist yet â€” see instructions below', sql: 'CREATE TABLE flow_debug_logs (id BIGSERIAL PRIMARY KEY, created_at TIMESTAMPTZ DEFAULT NOW(), step TEXT, action TEXT, screen TEXT, body_keys TEXT, error_msg TEXT, response_screen TEXT, notes TEXT);' });
     return res.json({ count: data?.length, logs: data });
   } catch (e: any) {
     return res.json({ error: e.message });
   }
 });
 
-// ── Diagnostic: GET /api/flow/check-meta-flow ──────────────────────────
+// â”€â”€ Diagnostic: GET /api/flow/check-meta-flow â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Fetches the ACTUAL published flow JSON from Meta Graph API.
 // Compares it with what our backend expects.
 router.get('/check-meta-flow', async (_req: Request, res: Response) => {
@@ -199,7 +199,7 @@ router.get('/check-meta-flow', async (_req: Request, res: Response) => {
       flowMeta,
       allScreenIds,               // ALL screen IDs in the flow
       questionScreenData,         // field schema declared in QUESTION screen
-      questionScreenLayout,       // ← FULL LAYOUT: exact component text/variable refs
+      questionScreenLayout,       // â† FULL LAYOUT: exact component text/variable refs
       expectedFields: ['q1_id', 'q1_text', 'q1_english', 'q1_options', 'q1_verse'],
       actualPublishedFields: questionScreenData ? Object.keys(questionScreenData) : null,
       fieldNamesMatch: questionScreenData
@@ -215,7 +215,7 @@ router.get('/check-meta-flow', async (_req: Request, res: Response) => {
   }
 });
 
-// ── Helper: write one debug row to Supabase (fail-silently) ──
+// â”€â”€ Helper: write one debug row to Supabase (fail-silently) â”€â”€
 async function dbg(step: string, fields: Record<string, string>) {
   try {
     await supabase.from('flow_debug_logs').insert({
@@ -230,28 +230,19 @@ async function dbg(step: string, fields: Record<string, string>) {
   } catch (_) { /* silent */ }
 }
 
-// ── Main handler ──────────────────────────────────────────────
+// â”€â”€ Main exchange handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/exchange', async (req: Request, res: Response) => {
   try {
-    // ─ Step 0: Log that the request arrived AT ALL ─────────────
-    // If you NEVER see this in /api/flow/debug, the flow button
-    // is NOT calling our endpoint (wrong URL or flow blocked in Meta).
     const bodyKeys = Object.keys(req.body || {}).join(',');
-    console.log('[Flow:ARRIVED] body keys:', bodyKeys, '| action:', req.body?.action);
     await dbg('ARRIVED', { body_keys: bodyKeys, action: req.body?.action ?? '' });
 
-    // ── Plain-text ping (WhatsApp client opening the flow) ────────────────────
-    // The WhatsApp client sends { "action": "ping" } as unencrypted JSON.
-    // Must be checked BEFORE decryptRequest — calling decryptRequest on a plain
-    // ping body (no encrypted_flow_data fields) throws TypeError → HTTP 500.
+    // â”€â”€ Plain-text ping â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (req.body?.action === 'ping') {
-      console.log('[Flow] plain-text ping — responding active');
       await dbg('PLAIN_PING', { action: 'ping', response_screen: 'active' });
       return res.json({ data: { status: 'active' } });
     }
 
     const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
-    console.log('[Flow:DECRYPT] has encrypted_flow_data:', !!encrypted_flow_data, '| has key:', !!encrypted_aes_key, '| has iv:', !!initial_vector);
     await dbg('PRE_DECRYPT', {
       body_keys: bodyKeys,
       notes: `efdata=${!!encrypted_flow_data} key=${!!encrypted_aes_key} iv=${!!initial_vector}`,
@@ -261,32 +252,39 @@ router.post('/exchange', async (req: Request, res: Response) => {
     try {
       ({ decryptedBody, aesKey, iv } = decryptRequest({ encrypted_flow_data, encrypted_aes_key, initial_vector }));
     } catch (decryptErr: any) {
-      console.error('[Flow:DECRYPT_FAIL]', decryptErr.message);
       await dbg('DECRYPT_FAIL', { error_msg: decryptErr.message, body_keys: bodyKeys });
       return res.status(500).json({ error: 'decryption failed', detail: decryptErr.message });
     }
 
-    const { action: rawAction, screen, data, flow_token, version } = decryptedBody as any;
+    const { action: rawAction, screen, data: payload, flow_token, version } = decryptedBody as any;
     const action = (rawAction || '').toLowerCase();
-    console.log('[Flow:DECRYPTED] action:', action, '| screen:', screen, '| version:', version);
-    await dbg('DECRYPTED', { action, screen: screen ?? '', notes: `version=${version} token=${flow_token ? 'present' : 'MISSING'}` });
+    await dbg('DECRYPTED', {
+      action, screen: screen ?? '',
+      notes: `version=${version} token=${flow_token ? 'present' : 'MISSING'}`,
+    });
 
-    // ── Encrypted ping (Meta Business Manager health check) ───────────────────
+    // â”€â”€ Encrypted ping (Meta health check) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (action === 'ping') {
-      console.log('[Flow] encrypted ping (health check) — responding active');
       await dbg('ENC_PING', { action: 'ping', response_screen: 'active' });
       return res.send(encryptResponse({ version, data: { status: 'active' } }, aesKey, iv));
     }
 
-    // ── INIT: fetch question immediately and navigate to QUESTION ──────────────
-    // NOTE: We do NOT return WELCOME + wait for data_exchange.
-    // Reason: WhatsApp clients sometimes ignore the data_exchange WELCOME→QUESTION
-    //         response and show __example__ values (a known client-side bug).
-    //         Solution: Load the question on INIT and go directly to QUESTION.
+    const today   = new Date().toISOString().split('T')[0];
+    const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || 'â€”';
+
+    // â”€â”€ INIT â†’ Return WELCOME screen with today's date â”€â”€â”€â”€â”€â”€â”€
     if (action === 'init') {
-      const today = new Date().toISOString().split('T')[0];
-      console.log('[Flow:INIT] fetching question for', today, '— navigating directly to QUESTION');
-      await dbg('INIT', { action: 'init', response_screen: 'QUESTION', notes: `date=${today}` });
+      const hindiDate = formatHindiDate(today);
+      await dbg('INIT', { action, response_screen: 'WELCOME', notes: `date=${today}` });
+      return res.send(encryptResponse({
+        version, screen: 'WELCOME',
+        data: { quiz_date: hindiDate },
+      }, aesKey, iv));
+    }
+
+    // â”€â”€ data_exchange: WELCOME "Start Quiz" â†’ serve Gospel question â”€â”€
+    if (action === 'data_exchange' && (!screen || screen === 'WELCOME')) {
+      await dbg('DE_WELCOME', { action, screen: screen ?? '', notes: `date=${today}` });
 
       const { data: questions, error } = await supabase
         .from('questions')
@@ -296,218 +294,161 @@ router.post('/exchange', async (req: Request, res: Response) => {
         .order('slot', { ascending: true })
         .limit(5);
 
-      const q = (!error && questions && questions.length > 0)
-        ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
-        : null;
-
-      const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || '—';
-      const optA = cleanOpt(q?.option_a || '');
-      const optB = cleanOpt(q?.option_b || '');
-      const optC = cleanOpt(q?.option_c || '');
-      const optD = cleanOpt(q?.option_d || '');
-
-      const questionData = {
-        q1_id:      q ? String(q.id) : '',
-        q1_text:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
-        q1_english: q?.english_question || '',
-        q1_options: q ? `A) ${optA}\nB) ${optB}\nC) ${optC}\nD) ${optD}` : 'Quiz not available today.',
-        q1_verse:   q?.verse_reference || '',
-      };
-
-      await dbg('INIT_QUESTION', {
-        action: 'init',
-        response_screen: 'QUESTION',
-        notes: `q1_id=${questionData.q1_id} q1_text_len=${questionData.q1_text.length} found=${questions?.length ?? 0}`,
-        error_msg: error?.message ?? '',
-      });
-      return res.send(encryptResponse({ version, screen: 'QUESTION', data: questionData }, aesKey, iv));
-    }
-
-
-    // ── data_exchange: WELCOME → "Start Quiz" tapped ──────────────────────────
-    if (action === 'data_exchange' && (!screen || screen === 'WELCOME')) {
-      const today = new Date().toISOString().split('T')[0];
-      console.log('[Flow:DE_WELCOME] fetching question for', today);
-      await dbg('DE_WELCOME', { action, screen: screen ?? 'undefined', notes: `date=${today}` });
-
-      const { data: questions, error } = await supabase
-        .from('questions')
-        .select('id, slot, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference')
-        .eq('quiz_date', today)
-        .not('status', 'eq', 'rejected')   // send any question — no approval required
-        .order('slot', { ascending: true })
-        .limit(5);
-
-      console.log('[Flow:DE_WELCOME] questions found:', questions?.length ?? 0, '| error:', error?.message);
       await dbg('DE_WELCOME_Q', {
-        action, screen: screen ?? '',
-        notes: `found=${questions?.length ?? 0} error=${error?.message ?? 'none'}`,
-        error_msg: error?.message ?? '',
+        action, notes: `found=${questions?.length ?? 0} error=${error?.message ?? 'none'}`,
       });
 
+      // Pick slot=1 first (new single-question), fall back to slot=2 or any
       const q = (!error && questions && questions.length > 0)
-        ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
+        ? (questions.find((q: any) => q.slot === 1)
+          || questions.find((q: any) => q.slot === 2)
+          || questions[0])
         : null;
 
-      // CRITICAL: Send ONLY the 5 fields declared in the QUESTION screen data schema.
-      // WhatsApp Flow v7.1 REJECTS responses that contain undeclared fields.
-      // Schema declares: q1_id, q1_text, q1_english, q1_options, q1_verse
-      const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || '—';
-      const optA = cleanOpt(q?.option_a || '');
-      const optB = cleanOpt(q?.option_b || '');
-      const optC = cleanOpt(q?.option_c || '');
-      const optD = cleanOpt(q?.option_d || '');
-
-      const questionData = {
-        q1_id:      q ? String(q.id) : '',
-        q1_text:    q?.question_text || 'आज की क्विज़ उपलब्ध नहीं है।',
-        q1_english: q?.english_question || '',
-        q1_options: q
-          ? `A) ${optA}\nB) ${optB}\nC) ${optC}\nD) ${optD}`
-          : 'Quiz not available today.',
-        q1_verse:   q?.verse_reference || '',
+      const questionData = q ? {
+        q_id:     String(q.id),
+        q_text:   q.question_text  || 'à¤†à¤œ à¤•à¤¾ à¤ªà¥à¤°à¤¶à¥à¤¨ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚à¥¤',
+        q_english: q.english_question || '',
+        q_opt_a:  cleanOpt(q.option_a),
+        q_opt_b:  cleanOpt(q.option_b),
+        q_opt_c:  cleanOpt(q.option_c),
+        q_opt_d:  cleanOpt(q.option_d),
+        q_verse:  q.verse_reference || '',
+      } : {
+        q_id: '', q_text: 'à¤†à¤œ à¤•à¥€ à¤•à¥à¤µà¤¿à¤œà¤¼ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤',
+        q_english: 'Quiz not available today.',
+        q_opt_a: 'â€”', q_opt_b: 'â€”', q_opt_c: 'â€”', q_opt_d: 'â€”', q_verse: '',
       };
 
-      console.log('[Flow:QUESTION_DATA] q1_id:', questionData.q1_id, '| optA[:20]:', optA.slice(0, 20));
       await dbg('DE_WELCOME_RESP', {
-        action,
-        response_screen: 'QUESTION',
-        notes: `q1_id=${questionData.q1_id} q1_text_len=${questionData.q1_text.length} optA=${optA.slice(0, 15)}`,
+        action, response_screen: 'QUESTION',
+        notes: `q_id=${questionData.q_id} q_text_len=${questionData.q_text.length}`,
       });
       return res.send(encryptResponse({ version, screen: 'QUESTION', data: questionData }, aesKey, iv));
     }
 
-    // ── data_exchange: QUESTION screen — user submitted answer ─
+    // â”€â”€ data_exchange: QUESTION "Submit Answer" â†’ score â†’ SUMMARY â”€â”€
     if (action === 'data_exchange' && screen === 'QUESTION') {
-      const { q1_id, q1_answer } = data;
-      const today = new Date().toISOString().split('T')[0];
+      const { q_id, q_answer } = payload || {};
+      await dbg('DE_QUESTION', { action, screen, notes: `q_id=${q_id} answer=${q_answer}` });
 
-      console.log('[Flow] Answer submitted. q1_id:', q1_id, '| answer:', q1_answer);
-
-      // Get user phone from JWT flow_token
+      // Resolve user from JWT
       const phone = await getUserPhoneFromToken(flow_token);
       if (!phone) {
-        console.error('[Flow] Invalid flow token');
-        return res.send(encryptResponse({ version, screen: 'WELCOME', data: {} }, aesKey, iv));
-      }
-
-      // Fetch user record
-      const { data: user } = await supabase
-        .from('users')
-        .select('id')
-        .eq('phone', phone)
-        .eq('status', 'active')
-        .single();
-
-      if (!user) {
-        console.error('[Flow] User not found for phone:', phone);
-        // Return SUMMARY with error message instead of crashing the flow
+        await dbg('DE_QUESTION_ERR', { error_msg: 'invalid flow_token' });
         return res.send(encryptResponse({
           version, screen: 'SUMMARY',
-          data: {
-            result: '❌ User not registered. Please contact admin.',
-            rank: '-', correct_answer: '-', explanation: ''
-          }
+          data: { result: 'âŒ Token invalid', correct_answer: 'â€”', explanation: 'Please re-open the quiz.', rank: 'â€”' },
         }, aesKey, iv));
       }
 
-      // Prevent duplicate submission — return existing result
+      const { data: user } = await supabase
+        .from('users').select('id').eq('phone', phone).eq('status', 'active').single();
+
+      if (!user) {
+        return res.send(encryptResponse({
+          version, screen: 'SUMMARY',
+          data: { result: 'âŒ User not registered', correct_answer: 'â€”', explanation: 'Please contact admin.', rank: 'â€”' },
+        }, aesKey, iv));
+      }
+
+      // Prevent duplicate submission â€” return existing result if already answered
       const { data: existing } = await supabase
-        .from('scores')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('quiz_date', today)
-        .single();
+        .from('scores').select('id').eq('user_id', user.id).eq('quiz_date', today).single();
 
       if (existing) {
-        const summary = await buildSummary(user.id, today, q1_id);
+        const summary = await buildSummary(user.id, today, String(q_id));
+        await dbg('DE_QUESTION_DUP', { action, notes: `duplicate submission for user ${user.id}` });
         return res.send(encryptResponse({ version, screen: 'SUMMARY', data: summary }, aesKey, iv));
       }
 
-      // Fetch correct answer + explanation
+      // Fetch correct answer and explanation
       const { data: question } = await supabase
         .from('questions')
         .select('id, correct_answer, explanation, option_a, option_b, option_c, option_d')
-        .eq('id', q1_id)
+        .eq('id', q_id)
         .single();
 
-      if (!question) return res.status(404).json({ error: 'Question not found' });
+      if (!question) {
+        return res.send(encryptResponse({
+          version, screen: 'SUMMARY',
+          data: { result: 'âŒ Question not found', correct_answer: 'â€”', explanation: '', rank: 'â€”' },
+        }, aesKey, iv));
+      }
 
-      const isCorrect  = question.correct_answer === q1_answer;
+      const isCorrect  = (question.correct_answer || '').toUpperCase() === (q_answer || '').toUpperCase();
       const score      = isCorrect ? 1 : 0;
       const percentage = isCorrect ? 100.0 : 0.0;
 
       // Save response
       await supabase.from('responses').insert({
-        user_id: user.id, quiz_date: today, question_id: q1_id,
-        slot: 1, selected_option: q1_answer, is_correct: isCorrect,
+        user_id: user.id, quiz_date: today, question_id: q_id,
+        slot: 1, selected_option: q_answer, is_correct: isCorrect,
       });
-
-      // Save score
-      await supabase.from('scores').insert({
-        user_id: user.id, quiz_date: today, score, percentage,
-      });
-
-      // Update last_active
-      await supabase.from('users')
-        .update({ last_active: new Date().toISOString() })
-        .eq('id', user.id);
 
       // Compute rank
       const { count: betterCount } = await supabase
         .from('scores')
         .select('*', { count: 'exact', head: true })
         .eq('quiz_date', today)
-        .eq('score', 1)        // only perfect scorers rank above
+        .eq('score', 1)
         .lt('created_at', new Date().toISOString());
 
       const rank = (betterCount ?? 0) + 1;
-      await supabase.from('scores').update({ rank }).eq('user_id', user.id).eq('quiz_date', today);
 
-      // Build option label for display
+      // Save score
+      await supabase.from('scores').insert({
+        user_id: user.id, quiz_date: today, score, percentage, rank,
+      });
+
+      // Update last_active
+      await supabase.from('users').update({ last_active: new Date().toISOString() }).eq('id', user.id);
+
+      // Build correct answer display label
       const optMap: Record<string, string> = {
         A: question.option_a, B: question.option_b,
         C: question.option_c, D: question.option_d,
       };
-      const correctLabel = `${question.correct_answer}) ${optMap[question.correct_answer]}`;
+      const ca = (question.correct_answer || '').toUpperCase();
+      const correctLabel = `${ca}) ${cleanOpt(optMap[ca] || '')}`;
 
       const summaryData = {
-        result:         isCorrect ? '✅ सही! Correct!' : '❌ गलत! Incorrect!',
-        rank:           String(rank),
+        result:         isCorrect ? 'âœ… à¤¸à¤¹à¥€! Correct!' : 'âŒ à¤—à¤²à¤¤! Incorrect!',
         correct_answer: correctLabel,
         explanation:    question.explanation || '',
+        rank:           String(rank),
       };
 
+      await dbg('DE_QUESTION_RESP', {
+        action, response_screen: 'SUMMARY',
+        notes: `correct=${isCorrect} rank=${rank} score=${score}`,
+      });
       return res.send(encryptResponse({ version, screen: 'SUMMARY', data: summaryData }, aesKey, iv));
     }
 
-    // Default passthrough
-    return res.send(encryptResponse({ screen, data: {} }, aesKey, iv));
+    // Default fallthrough
+    await dbg('UNHANDLED', { action, screen: screen ?? '', notes: 'no handler matched' });
+    return res.send(encryptResponse({ version, screen: 'WELCOME', data: { quiz_date: formatHindiDate(today) } }, aesKey, iv));
 
   } catch (err: any) {
     const errMsg = err?.message ?? String(err);
-    console.error('[Flow:CATCH] type:', err?.constructor?.name, '| msg:', errMsg);
-    console.error('[Flow:CATCH] PRIVATE_KEY set:', !!process.env.WHATSAPP_FLOW_PRIVATE_KEY);
-    console.error('[Flow:CATCH] SUPABASE_URL set:', !!process.env.SUPABASE_URL);
-    // Log the error to Supabase so it shows up in /api/flow/debug
     await dbg('CATCH_ERROR', {
       error_msg: errMsg,
-      notes: `type=${err?.constructor?.name} key=${!!process.env.WHATSAPP_FLOW_PRIVATE_KEY} supabase=${!!process.env.SUPABASE_URL}`,
+      notes: `type=${err?.constructor?.name} key=${!!process.env.WHATSAPP_FLOW_PRIVATE_KEY}`,
     }).catch(() => {});
     return res.status(500).json({ error: 'Internal server error', detail: errMsg });
   }
 });
 
-// ── Helpers ───────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function formatHindiDate(isoDate: string): string {
   const hindiMonths = [
-    'जनवरी','फ़रवरी','मार्च','अप्रैल','मई','जून',
-    'जुलाई','अगस्त','सितम्बर','अक्टूबर','नवम्बर','दिसम्बर',
+    'à¤œà¤¨à¤µà¤°à¥€','à¤«à¤¼à¤°à¤µà¤°à¥€','à¤®à¤¾à¤°à¥à¤š','à¤…à¤ªà¥à¤°à¥ˆà¤²','à¤®à¤ˆ','à¤œà¥‚à¤¨',
+    'à¤œà¥à¤²à¤¾à¤ˆ','à¤…à¤—à¤¸à¥à¤¤','à¤¸à¤¿à¤¤à¤®à¥à¤¬à¤°','à¤…à¤•à¥à¤Ÿà¥‚à¤¬à¤°','à¤¨à¤µà¤®à¥à¤¬à¤°','à¤¦à¤¿à¤¸à¤®à¥à¤¬à¤°',
   ];
-  const hindiDays = ['रविवार','सोमवार','मंगलवार','बुधवार','गुरुवार','शुक्रवार','शनिवार'];
   const d = new Date(isoDate + 'T00:00:00');
-  return `${d.getDate()} ${hindiMonths[d.getMonth()]} ${d.getFullYear()}, ${hindiDays[d.getDay()]}`;
+  return `${d.getDate()} ${hindiMonths[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 async function getUserPhoneFromToken(token: string): Promise<string | null> {
@@ -522,25 +463,27 @@ async function getUserPhoneFromToken(token: string): Promise<string | null> {
 
 async function buildSummary(userId: string, quizDate: string, q1Id: string) {
   const { data: scoreRow } = await supabase
-    .from('scores').select('score, percentage, rank').eq('user_id', userId).eq('quiz_date', quizDate).single();
+    .from('scores').select('score, rank').eq('user_id', userId).eq('quiz_date', quizDate).single();
 
   const { data: response } = await supabase
-    .from('responses').select('is_correct, selected_option').eq('user_id', userId).eq('quiz_date', quizDate).eq('slot', 1).single();
+    .from('responses').select('is_correct, selected_option')
+    .eq('user_id', userId).eq('quiz_date', quizDate).eq('slot', 1).single();
 
   const { data: question } = await supabase
-    .from('questions').select('explanation, correct_answer, option_a, option_b, option_c, option_d').eq('id', q1Id).single();
+    .from('questions').select('explanation, correct_answer, option_a, option_b, option_c, option_d')
+    .eq('id', q1Id).single();
 
   const optMap: Record<string, string> = {
     A: question?.option_a || '', B: question?.option_b || '',
     C: question?.option_c || '', D: question?.option_d || '',
   };
-  const ca = question?.correct_answer || '';
+  const ca = (question?.correct_answer || '').toUpperCase();
 
   return {
-    result:         response?.is_correct ? '✅ सही! Correct!' : '❌ गलत! Incorrect!',
-    rank:           String(scoreRow?.rank ?? '-'),
+    result:         response?.is_correct ? 'âœ… à¤¸à¤¹à¥€! Correct!' : 'âŒ à¤—à¤²à¤¤! Incorrect!',
     correct_answer: `${ca}) ${optMap[ca]}`,
     explanation:    question?.explanation || '',
+    rank:           String(scoreRow?.rank ?? '-'),
   };
 }
 
