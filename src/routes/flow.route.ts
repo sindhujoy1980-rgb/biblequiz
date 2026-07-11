@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // src/routes/flow.route.ts
 // WhatsApp Flow Data Exchange â€” SINGLE QUESTION per day
 // POST /api/flow/exchange  â† Meta calls this
@@ -69,77 +69,79 @@ function encryptResponse(response: object, aesKey: Buffer, iv: Buffer): string {
   return encrypted.toString('base64');
 }
 
-// â”€â”€ Diagnostic: GET /api/flow/test-exchange â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ————————————————————————————————————————————————————————————
+// Diagnostic: GET /api/flow/test-exchange ──────────────────────────
 // Shows EXACTLY what JSON would be encrypted and sent for QUESTION screen
 // Call: https://biblequiz-five.vercel.app/api/flow/test-exchange
 router.get('/test-exchange', async (_req: Request, res: Response) => {
   try {
     const today = new Date().toISOString().split('T')[0];
-    // SAME query as real data_exchange handler
     const { data: questions, error } = await supabase
       .from('questions')
-      .select('id, slot, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference, correct_answer')
+      .select('id, slot, question_text, english_question, option_a, option_b, option_c, option_d, verse_reference, correct_answer, category, status')
       .eq('quiz_date', today)
       .not('status', 'eq', 'rejected')
       .order('slot', { ascending: true })
       .limit(5);
 
+    // Same priority as real handler: slot=1 first, then slot=2, then any
     const q = (!error && questions && questions.length > 0)
-      ? (questions.find((q: any) => q.slot === 2) || questions.find((q: any) => q.slot === 1) || questions[0])
+      ? (questions.find((q: any) => q.slot === 1)
+        || questions.find((q: any) => q.slot === 2)
+        || questions[0])
       : null;
 
-    const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || 'â€”';
-    const optA = cleanOpt(q?.option_a || '');
-    const optB = cleanOpt(q?.option_b || '');
-    const optC = cleanOpt(q?.option_c || '');
-    const optD = cleanOpt(q?.option_d || '');
+    const cleanOpt = (s: string) => (s || '').replace(/[\n\r\t]/g, ' ').trim() || '—';
 
-    // EXACT questionData as built in real handler
-    const questionData = {
-      q1_id:      q ? String(q.id) : '',
-      q1_text:    q?.question_text || 'à¤†à¤œ à¤•à¥€ à¤•à¥à¤µà¤¿à¤œà¤¼ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤',
-      q1_english: q?.english_question || '',
-      q1_options: q ? `A) ${optA}\nB) ${optB}\nC) ${optC}\nD) ${optD}` : 'Quiz not available today.',
-      q1_verse:   q?.verse_reference || '',
+    const questionData = q ? {
+      q_id:      String(q.id),
+      q_text:    q.question_text   || 'आज का प्रश्न उपलब्ध नहीं।',
+      q_english: q.english_question || '',
+      q_opt_a:   cleanOpt(q.option_a),
+      q_opt_b:   cleanOpt(q.option_b),
+      q_opt_c:   cleanOpt(q.option_c),
+      q_opt_d:   cleanOpt(q.option_d),
+      q_verse:   q.verse_reference || '',
+    } : {
+      q_id: '', q_text: 'आज की क्विज़ उपलब्ध नहीं है।',
+      q_english: 'Quiz not available today.',
+      q_opt_a: '—', q_opt_b: '—', q_opt_c: '—', q_opt_d: '—', q_verse: '',
     };
 
-    // Full response object that gets encrypted
     const fullResponse = { version: '3.0', screen: 'QUESTION', data: questionData };
-
     const jsonStr = JSON.stringify(fullResponse);
 
     return res.json({
       today,
-      questionsFound: questions?.length ?? 0,
-      queryError:     error?.message ?? null,
-      selectedSlot:   q?.slot ?? null,
-      selectedId:     q?.id ?? null,
+      questionsFound:   questions?.length ?? 0,
+      queryError:       error?.message ?? null,
+      selectedSlot:     q?.slot ?? null,
+      selectedId:       q?.id ?? null,
+      selectedCategory: (q as any)?.category ?? null,
+      selectedStatus:   (q as any)?.status ?? null,
       fieldLengths: {
-        q1_id:      questionData.q1_id.length,
-        q1_text:    questionData.q1_text.length,
-        q1_english: questionData.q1_english.length,
-        q1_options: questionData.q1_options.length,
-        q1_verse:   questionData.q1_verse.length,
+        q_id:      questionData.q_id.length,
+        q_text:    questionData.q_text.length,
+        q_english: questionData.q_english.length,
+        q_opt_a:   questionData.q_opt_a.length,
+        q_opt_b:   questionData.q_opt_b.length,
+        q_opt_c:   questionData.q_opt_c.length,
+        q_opt_d:   questionData.q_opt_d.length,
+        q_verse:   questionData.q_verse.length,
       },
-      fieldNullCheck: {
-        q1_id_empty:      questionData.q1_id === '',
-        q1_text_empty:    questionData.q1_text === '',
-        q1_english_empty: questionData.q1_english === '',
-        q1_options_empty: questionData.q1_options === '',
-        q1_verse_empty:   questionData.q1_verse === '',
-      },
-      questionData,   // â† exact data being sent to QUESTION screen
-      fullResponse,   // â† full response being encrypted { version, screen, data }
-      jsonLength:     jsonStr.length,
-      jsonPreview:    jsonStr.substring(0, 300),  // first 300 chars of JSON
+      questionData,   // ← exact data being sent to QUESTION screen
+      fullResponse,   // ← full response being encrypted { version, screen, data }
+      jsonLength:  jsonStr.length,
+      jsonPreview: jsonStr.substring(0, 400),
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-// â”€â”€ Debug: read the last 20 flow exchange logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Debug: read the last 20 flow exchange logs ───────────────
 router.get('/debug', async (_req: Request, res: Response) => {
+
   try {
     const { data, error } = await supabase
       .from('flow_debug_logs')
