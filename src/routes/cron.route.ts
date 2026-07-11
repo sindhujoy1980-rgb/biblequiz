@@ -170,8 +170,11 @@ async function sendQuizMessage(phone: string, name: string, quizDate: string): P
 
   const firstName     = name.split(' ')[0];
   const templateName  = process.env.WHATSAPP_TEMPLATE_NAME || 'bible_quiz_with_readings';
+  // Keep header short — Meta enforces a strict 60-char limit on header parameters.
+  // 'Friday, 11 July 2026' was 62 chars total with prefix → Meta error #132005.
+  // '11 Jul 2026' keeps total header well under 60 chars.
   const dateFormatted = new Date(quizDate).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'long', year: 'numeric', weekday: 'long',
+    day: 'numeric', month: 'short', year: 'numeric',
   });
 
   // WhatsApp template params CANNOT contain newlines — use ' | ' as separator
