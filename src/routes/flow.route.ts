@@ -51,7 +51,6 @@ function decryptRequest(body: {
   const decipher = crypto.createDecipheriv('aes-128-gcm', aesKey, iv);
   decipher.setAuthTag(authTag);
   const decryptedJSON = Buffer.concat([decipher.update(cipherText), decipher.final()]).toString('utf-8');
-
   return { decryptedBody: JSON.parse(decryptedJSON), aesKey, iv };
 }
 
@@ -343,7 +342,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
         await dbg('DE_QUESTION_ERR', { error_msg: 'invalid flow_token' });
         return res.send(encryptResponse({
           version, screen: 'SUMMARY',
-          data: { result: 'âŒ Token invalid', correct_answer: 'â€”', explanation: 'Please re-open the quiz.', rank: 'â€”' },
+          data: { result: 'Error: Token invalid', correct_label: 'Please re-open the quiz.', explanation: '', rank_label: '' },
         }, aesKey, iv));
       }
 
@@ -353,7 +352,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
       if (!user) {
         return res.send(encryptResponse({
           version, screen: 'SUMMARY',
-          data: { result: 'âŒ User not registered', correct_answer: 'â€”', explanation: 'Please contact admin.', rank: 'â€”' },
+          data: { result: 'Error: User not registered', correct_label: 'Please contact admin.', explanation: '', rank_label: '' },
         }, aesKey, iv));
       }
 
@@ -377,7 +376,7 @@ router.post('/exchange', async (req: Request, res: Response) => {
       if (!question) {
         return res.send(encryptResponse({
           version, screen: 'SUMMARY',
-          data: { result: 'âŒ Question not found', correct_answer: 'â€”', explanation: '', rank: 'â€”' },
+          data: { result: 'Error: Question not found', correct_label: '', explanation: '', rank_label: '' },
         }, aesKey, iv));
       }
 
@@ -418,10 +417,10 @@ router.post('/exchange', async (req: Request, res: Response) => {
       const correctLabel = `${ca}) ${cleanOpt(optMap[ca] || '')}`;
 
       const summaryData = {
-        result:         isCorrect ? 'âœ… à¤¸à¤¹à¥€! Correct!' : 'âŒ à¤—à¤²à¤¤! Incorrect!',
-        correct_answer: correctLabel,
-        explanation:    question.explanation || '',
-        rank:           String(rank),
+        result:        isCorrect ? 'Correct!' : 'Incorrect!',
+        correct_label: 'सही उत्तर / Correct Answer: ' + correctLabel,
+        explanation:   question.explanation || '',
+        rank_label:    'आज की रैंक / Today\'s Rank: #' + String(rank),
       };
 
       await dbg('DE_QUESTION_RESP', {
@@ -484,11 +483,12 @@ async function buildSummary(userId: string, quizDate: string, q1Id: string) {
   };
   const ca = (question?.correct_answer || '').toUpperCase();
 
+  const caLabel = `${ca}) ${optMap[ca] || ''}`;
   return {
-    result:         response?.is_correct ? 'âœ… à¤¸à¤¹à¥€! Correct!' : 'âŒ à¤—à¤²à¤¤! Incorrect!',
-    correct_answer: `${ca}) ${optMap[ca]}`,
-    explanation:    question?.explanation || '',
-    rank:           String(scoreRow?.rank ?? '-'),
+    result:        response?.is_correct ? 'Correct!' : 'Incorrect!',
+    correct_label: 'सही उत्तर / Correct Answer: ' + caLabel,
+    explanation:   question?.explanation || '',
+    rank_label:    'आज की रैंक / Today\'s Rank: #' + String(scoreRow?.rank ?? '-'),
   };
 }
 
