@@ -14,7 +14,7 @@ const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SE
 
 export interface GeneratedQuestion {
   slot: 1;
-  category: 'Gospel';
+  category: 'NT-Gospel';
   question_text: string;       // Hindi Devanagari
   question_roman: string;      // Roman Hindi
   english_question: string;    // English
@@ -59,13 +59,13 @@ RULES:
 - gospel_ref: English Gospel reference only, e.g. "Matthew 10:37-42"
 - difficulty: easy / medium / hard
 - topic_tag: English keyword for the topic
-- category must be "Gospel"
+- category must be "NT-Gospel"
 - slot must be 1
 
 Return ONLY a valid JSON array with exactly ONE object. No markdown, no extra text:
 [{
   "slot": 1,
-  "category": "Gospel",
+  "category": "NT-Gospel",
   "liturgical_day": "...(Hindi)...",
   "gospel_ref": "...(English)...",
   "question_roman": "...(Roman Hindi)...",
@@ -97,7 +97,7 @@ function validate(questions: GeneratedQuestion[]): { valid: boolean; errors: str
   if (!['A', 'B', 'C', 'D'].includes(q.correct_answer)) errors.push('Invalid correct_answer');
   if (!q.verse_reference?.trim()) errors.push('Missing verse_reference');
   if (!devanagari.test(q.question_text || '')) errors.push('question_text not in Hindi/Devanagari');
-  if (q.category !== 'Gospel') errors.push('category must be Gospel');
+  if (q.category !== 'NT-Gospel') errors.push('category must be NT-Gospel');
   return { valid: errors.length === 0, errors };
 }
 
