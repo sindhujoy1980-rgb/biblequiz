@@ -32,6 +32,67 @@ function validateCronSecret(req: Request, res: Response, next: NextFunction): vo
 
 router.use(validateCronSecret);
 
+// ── POST /api/cron/test-send ─────────────────────────────────
+// Debug: sends a raw WhatsApp template message and returns the FULL Meta response
+// Usage: POST /api/cron/test-send  body: { phone: "919XXXXXXXXX" }
+router.post('/test-send', async (req: Request, res: Response) => {
+  const phone = req.body?.phone || '919993612014';
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
+  const templateName  = process.env.WHATSAPP_TEMPLATE_NAME || 'bible_quiz_with_readings';
+
+  if (!phoneNumberId || !accessToken) {
+    return res.json({ error: 'WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_ACCESS_TOKEN not set', phoneNumberId: !!phoneNumberId, accessToken: !!accessToken });
+  }
+
+  const url = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
+
+  // Send simplest possible template call — just header + body, no flow button
+  const body = {
+    messaging_product: 'whatsapp',
+    to: phone,
+    type: 'template',
+    template: {
+      name: templateName,
+      language: { code: 'en' },
+      components: [
+        { type: 'header', parameters: [{ type: 'text', text: '📖 Bible Quiz Daily — 12 Jul 2026' }] },
+        { type: 'body', parameters: [
+          { type: 'text', text: 'Ordinary Time, Week 14' },
+          { type: 'text', text: 'Genesis 49:29-32 — Jacob charged his sons...' },
+          { type: 'text', text: 'Matthew 10:24-33 — A disciple is not above his teacher...' },
+          { type: 'text', text: 'Jesus teaches disciples not to fear persecution.' },
+          { type: 'text', text: 'Friend' },
+        ]},
+        { type: 'button', sub_type: 'flow', index: '0', parameters: [
+          { type: 'action', action: { flow_token: 'test-token-debug' } },
+        ]},
+      ],
+    },
+  };
+
+  try {
+    const metaRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const metaBody = await metaRes.json();
+    return res.json({
+      phone,
+      phoneNumberId,
+      templateName,
+      metaStatus: metaRes.status,
+      metaOk: metaRes.ok,
+      metaResponse: metaBody,   // ← FULL raw response from Meta
+      sentBody: body,
+    });
+  } catch (err: any) {
+    return res.json({ error: err.message, phone, phoneNumberId, templateName });
+  }
+});
+
 // ── POST /api/cron/generate-questions ────────────────────────
 // Generates tomorrow's quiz question via Gemini AI (Gospel-based)
 // Schedule: daily at 11 PM IST (on cron-job.org)
