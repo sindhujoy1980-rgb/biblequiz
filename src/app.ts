@@ -57,7 +57,11 @@ const flowLimiter = rateLimit({
 });
 
 app.use(generalLimiter);
-app.use(express.json());
+app.use(express.json({
+  verify: (req: any, _res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 // ── Health check ─────────────────────────────────────────────
 app.get('/', (_req, res) => {

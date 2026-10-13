@@ -3,6 +3,8 @@
 // Cron Job Endpoints — called by cron-job.org (free)
 //
 // Endpoints:
+//   GET  /api/cron/whatsapp-diag       ← diagnostic: phone number & template status
+//   POST /api/cron/test-send           ← debug: test WhatsApp template send
 //   POST /api/cron/generate-questions  ← runs ~11 PM daily
 //   POST /api/cron/send-quiz           ← runs 8 AM daily
 //
@@ -32,14 +34,56 @@ function validateCronSecret(req: Request, res: Response, next: NextFunction): vo
 
 router.use(validateCronSecret);
 
+// ── GET /api/cron/whatsapp-diag ──────────────────────────────
+// Queries Meta Graph API to inspect Phone Number ID, display phone number,
+// account status, and template status.
+router.get('/whatsapp-diag', async (_req: Request, res: Response) => {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
+  const wabaId        = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+
+  if (!phoneNumberId || !accessToken) {
+    return res.json({ error: 'WhatsApp env vars missing', phoneNumberId: !!phoneNumberId, accessToken: !!accessToken });
+  }
+
+  try {
+    // 1. Phone number details
+    const phoneRes = await fetch(
+      `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=id,verified_name,display_phone_number,quality_rating,code_verification_status,platform_type,throughput,name_status`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const phoneData = await phoneRes.json();
+
+    // 2. Templates details (if WABA ID is known)
+    let templatesData = null;
+    if (wabaId) {
+      const tplRes = await fetch(
+        `https://graph.facebook.com/v19.0/${wabaId}/message_templates?fields=name,status,language,category,components`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      templatesData = await tplRes.json();
+    }
+
+    return res.json({
+      phoneNumberId,
+      wabaId,
+      phoneDetails: phoneData,
+      templates: templatesData,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/cron/test-send ─────────────────────────────────
 // Debug: sends a raw WhatsApp template message and returns the FULL Meta response
-// Usage: POST /api/cron/test-send  body: { phone: "919XXXXXXXXX" }
+// Usage: POST /api/cron/test-send  body: { phone: "919XXXXXXXXX", template: "hello_world" | "bible_quiz_with_readings", language: "en_US" | "en" }
 router.post('/test-send', async (req: Request, res: Response) => {
   const phone = req.body?.phone || '919993612014';
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
-  const templateName  = process.env.WHATSAPP_TEMPLATE_NAME || 'bible_quiz_with_readings';
+  const templateName  = req.body?.template || process.env.WHATSAPP_TEMPLATE_NAME || 'bible_quiz_with_readings';
+  const langCode      = req.body?.language || (templateName === 'hello_world' ? 'en_US' : 'en');
 
   if (!phoneNumberId || !accessToken) {
     return res.json({ error: 'WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_ACCESS_TOKEN not set', phoneNumberId: !!phoneNumberId, accessToken: !!accessToken });
@@ -47,29 +91,43 @@ router.post('/test-send', async (req: Request, res: Response) => {
 
   const url = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
 
-  // Send simplest possible template call — just header + body, no flow button
-  const body = {
-    messaging_product: 'whatsapp',
-    to: phone,
-    type: 'template',
-    template: {
-      name: templateName,
-      language: { code: 'en' },
-      components: [
-        { type: 'header', parameters: [{ type: 'text', text: '📖 Bible Quiz Daily — 12 Jul 2026' }] },
-        { type: 'body', parameters: [
-          { type: 'text', text: 'Ordinary Time, Week 14' },
-          { type: 'text', text: 'Genesis 49:29-32 — Jacob charged his sons...' },
-          { type: 'text', text: 'Matthew 10:24-33 — A disciple is not above his teacher...' },
-          { type: 'text', text: 'Jesus teaches disciples not to fear persecution.' },
-          { type: 'text', text: 'Friend' },
-        ]},
-        { type: 'button', sub_type: 'flow', index: '0', parameters: [
-          { type: 'action', action: { flow_token: 'test-token-debug' } },
-        ]},
-      ],
-    },
-  };
+  let body: any;
+  if (templateName === 'hello_world') {
+    body = {
+      messaging_product: 'whatsapp',
+      to: phone,
+      type: 'template',
+      template: {
+        name: 'hello_world',
+        language: { code: langCode },
+      },
+    };
+  } else {
+    body = {
+      messaging_product: 'whatsapp',
+      to: phone,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: langCode },
+        components: [
+          { type: 'header', parameters: [{ type: 'text', text: '📖 Bible Quiz Daily — 12 Jul 2026' }] },
+          { type: 'body', parameters: [
+            { type: 'text', text: 'Ordinary Time, Week 14' },
+            { type: 'text', text: 'Genesis 49:29-32 — Jacob charged his sons...' },
+            { type: 'text', text: 'Matthew 10:24-33 — A disciple is not above his teacher...' },
+            { type: 'text', text: 'Jesus teaches disciples not to fear persecution.' },
+            { type: 'text', text: 'Friend' },
+          ]},
+          ...(req.body?.withFlow === false ? [] : [
+            { type: 'button', sub_type: 'flow', index: '0', parameters: [
+              { type: 'action', action: { flow_token: 'test-token-debug' } },
+            ]}
+          ]),
+        ],
+      },
+    };
+  }
 
   try {
     const metaRes = await fetch(url, {
@@ -83,6 +141,7 @@ router.post('/test-send', async (req: Request, res: Response) => {
       phone,
       phoneNumberId,
       templateName,
+      language: langCode,
       metaStatus: metaRes.status,
       metaOk: metaRes.ok,
       metaResponse: metaBody,   // ← FULL raw response from Meta

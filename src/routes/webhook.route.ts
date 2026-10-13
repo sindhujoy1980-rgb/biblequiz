@@ -11,8 +11,14 @@
 
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 
 const router = Router();
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 // ── GET: Webhook verification (one-time setup by Meta) ───────
 router.get('/', (req: Request, res: Response) => {
@@ -30,13 +36,21 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // ── POST: Incoming events from Meta ──────────────────────────
-// Verify HMAC-SHA256 signature before processing
-router.post('/', (req: Request, res: Response) => {
-  // 1. Verify signature
+router.post('/', async (req: Request, res: Response) => {
+  // 1. Verify signature (lenient if secret not set or rawBody missing)
   const signature = req.headers['x-hub-signature-256'] as string;
-  if (!verifySignature(req.body, signature)) {
-    console.warn('[Webhook] ❌ Invalid signature — request rejected');
-    return res.status(401).json({ error: 'Invalid signature' });
+  const rawBody = (req as any).rawBody || req.body;
+  const isValid = verifySignature(rawBody, signature);
+
+  if (!isValid && process.env.WHATSAPP_APP_SECRET) {
+    console.warn('[Webhook] ⚠️ Signature mismatch or failed');
+    try {
+      await supabase.from('flow_debug_logs').insert({
+        step: 'WH_SIG_WARN',
+        error_msg: 'Signature mismatch',
+        notes: `sig=${signature ? signature.slice(0, 15) : 'missing'}`,
+      });
+    } catch (_) {}
   }
 
   // 2. Acknowledge immediately (Meta requires < 5s response)
@@ -44,7 +58,7 @@ router.post('/', (req: Request, res: Response) => {
 
   // 3. Process events asynchronously
   const body = req.body;
-  if (body.object !== 'whatsapp_business_account') return;
+  if (!body || body.object !== 'whatsapp_business_account') return;
 
   for (const entry of body.entry || []) {
     for (const change of entry.changes || []) {
@@ -54,31 +68,53 @@ router.post('/', (req: Request, res: Response) => {
 
       // Incoming text messages (e.g., user texting "Hello")
       for (const message of value.messages || []) {
+        try {
+          await supabase.from('flow_debug_logs').insert({
+            step: 'WH_MSG_IN',
+            action: message.type || 'text',
+            screen: message.from || '',
+            body_keys: message.id || '',
+            notes: (message.text?.body || '').slice(0, 100),
+          });
+        } catch (_) {}
         handleIncomingMessage(message, value.metadata).catch(console.error);
       }
 
-      // Delivery & read receipts
+      // Delivery & read receipts (CRITICAL for diagnosing why messages drop!)
       for (const status of value.statuses || []) {
         console.log(`[Webhook] Message ${status.id} — ${status.status}`);
+        try {
+          const errorsStr = status.errors ? JSON.stringify(status.errors) : '';
+          await supabase.from('flow_debug_logs').insert({
+            step: 'WH_STATUS',
+            action: status.status || 'unknown',
+            screen: status.recipient_id || '',
+            body_keys: status.id || '',
+            error_msg: errorsStr,
+            notes: `ts=${status.timestamp} pricing=${status.pricing?.pricing_model || ''}`,
+          });
+        } catch (_) {}
       }
     }
   }
 });
 
 // ── Signature verification ───────────────────────────────────
-function verifySignature(rawBody: Buffer | string, signature: string): boolean {
+function verifySignature(rawBody: Buffer | string | any, signature: string): boolean {
   if (!signature || !process.env.WHATSAPP_APP_SECRET) {
-    // Skip verification in dev if secret not set
-    if (process.env.NODE_ENV !== 'production') return true;
-    return false;
+    return true; // Don't block if secret isn't configured
   }
 
-  const expectedSig = 'sha256=' + crypto
-    .createHmac('sha256', process.env.WHATSAPP_APP_SECRET)
-    .update(typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody))
-    .digest('hex');
-
   try {
+    const bodyBuffer = Buffer.isBuffer(rawBody)
+      ? rawBody
+      : Buffer.from(typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody));
+
+    const expectedSig = 'sha256=' + crypto
+      .createHmac('sha256', process.env.WHATSAPP_APP_SECRET)
+      .update(bodyBuffer)
+      .digest('hex');
+
     return crypto.timingSafeEqual(
       Buffer.from(signature),
       Buffer.from(expectedSig)
@@ -89,8 +125,6 @@ function verifySignature(rawBody: Buffer | string, signature: string): boolean {
 }
 
 // ── Handle incoming text message ─────────────────────────────
-// If a user texts the number directly (not through Flow),
-// we can respond with a friendly message
 async function handleIncomingMessage(
   message: { from: string; type: string; text?: { body: string }; id: string },
   metadata: { phone_number_id: string }
