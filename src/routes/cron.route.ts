@@ -3,7 +3,7 @@
 // Cron Job Endpoints — called by cron-job.org (free)
 //
 // Endpoints:
-//   GET  /api/cron/whatsapp-diag       ← diagnostic: phone number & template status
+//   GET  /api/cron/whatsapp-diag       ← diagnostic: phone, templates, flows
 //   POST /api/cron/test-send           ← debug: test WhatsApp template send
 //   POST /api/cron/generate-questions  ← runs ~11 PM daily
 //   POST /api/cron/send-quiz           ← runs 8 AM daily
@@ -35,40 +35,54 @@ function validateCronSecret(req: Request, res: Response, next: NextFunction): vo
 router.use(validateCronSecret);
 
 // ── GET /api/cron/whatsapp-diag ──────────────────────────────
-// Queries Meta Graph API to inspect Phone Number ID, display phone number,
-// account status, and template status.
+// Full diagnostic: discovers real WABA ID, queries phone, templates & flows
 router.get('/whatsapp-diag', async (_req: Request, res: Response) => {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
-  const wabaId        = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+  const wabaIdEnv     = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
 
   if (!phoneNumberId || !accessToken) {
     return res.json({ error: 'WhatsApp env vars missing', phoneNumberId: !!phoneNumberId, accessToken: !!accessToken });
   }
 
   try {
-    // 1. Phone number details
+    // 1. Phone number details + whatsapp_business_account (auto-discover real WABA ID)
     const phoneRes = await fetch(
-      `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=id,verified_name,display_phone_number,quality_rating,code_verification_status,platform_type,throughput,name_status`,
+      `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=id,verified_name,display_phone_number,quality_rating,code_verification_status,platform_type,throughput,name_status,whatsapp_business_account`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-    const phoneData = await phoneRes.json();
+    const phoneData = await phoneRes.json() as any;
 
-    // 2. Templates details (if WABA ID is known)
-    let templatesData = null;
-    if (wabaId) {
+    // Auto-discover WABA ID from phone number response
+    const realWabaId = phoneData?.whatsapp_business_account?.id || wabaIdEnv;
+
+    // 2. Templates (use real WABA ID)
+    let templatesData: any = null;
+    if (realWabaId && realWabaId !== '987654321098765') {
       const tplRes = await fetch(
-        `https://graph.facebook.com/v19.0/${wabaId}/message_templates?fields=name,status,language,category,components`,
+        `https://graph.facebook.com/v19.0/${realWabaId}/message_templates?fields=name,status,language,category,components,rejected_reason&limit=20`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       templatesData = await tplRes.json();
     }
 
+    // 3. Flows (use real WABA ID)
+    let flowsData: any = null;
+    if (realWabaId && realWabaId !== '987654321098765') {
+      const flowRes = await fetch(
+        `https://graph.facebook.com/v19.0/${realWabaId}/flows?fields=id,name,status,categories,validation_errors,endpoint_uri`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      flowsData = await flowRes.json();
+    }
+
     return res.json({
       phoneNumberId,
-      wabaId,
+      configuredWabaId: wabaIdEnv,
+      discoveredWabaId: realWabaId,
       phoneDetails: phoneData,
       templates: templatesData,
+      flows: flowsData,
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -144,7 +158,7 @@ router.post('/test-send', async (req: Request, res: Response) => {
       language: langCode,
       metaStatus: metaRes.status,
       metaOk: metaRes.ok,
-      metaResponse: metaBody,   // ← FULL raw response from Meta
+      metaResponse: metaBody,
       sentBody: body,
     });
   } catch (err: any) {
@@ -271,19 +285,15 @@ router.post('/send-quiz', async (req: Request, res: Response) => {
 });
 
 // ── sendQuizMessage ───────────────────────────────────────────
-// Sends daily quiz via WhatsApp approved template.
-// Template includes: readings excerpt + reflection + Flow quiz button.
 async function sendQuizMessage(phone: string, name: string, quizDate: string): Promise<string> {
   const jwt = await import('jsonwebtoken');
 
-  // JWT flow_token — verified by the flow endpoint to identify the user
   const flowToken = jwt.default.sign(
     { phone },
     process.env.JWT_SECRET!,
     { expiresIn: '24h' }
   );
 
-  // Fetch today's readings + reflection from Supabase
   const { data: readings } = await supabase
     .from('daily_readings')
     .select('liturgical_day, first_reading_ref, first_reading_text, gospel_ref, gospel_text, reflection_en, reflection_hi')
@@ -292,14 +302,10 @@ async function sendQuizMessage(phone: string, name: string, quizDate: string): P
 
   const firstName     = name.split(' ')[0];
   const templateName  = process.env.WHATSAPP_TEMPLATE_NAME || 'bible_quiz_with_readings';
-  // Keep header short — Meta enforces a strict 60-char limit on header parameters.
-  // 'Friday, 11 July 2026' was 62 chars total with prefix → Meta error #132005.
-  // '11 Jul 2026' keeps total header well under 60 chars.
   const dateFormatted = new Date(quizDate).toLocaleDateString('en-IN', {
     day: 'numeric', month: 'short', year: 'numeric',
   });
 
-  // WhatsApp template params CANNOT contain newlines — use ' | ' as separator
   const clean = (s: string) => s.replace(/[\n\r\t]/g, ' ').replace(/ {5,}/g, '    ').trim();
 
   const liturgicalDay = clean(readings?.liturgical_day || 'Catholic Daily Readings').slice(0, 60);
@@ -312,8 +318,6 @@ async function sendQuizMessage(phone: string, name: string, quizDate: string): P
   const reflection    = readings?.reflection_en
     ? clean(readings.reflection_en).slice(0, 120)
     : "Reflect on today's Gospel and let it guide your day.";
-
-  console.log(`[WhatsApp] Sending template "${templateName}" to ${phone} (${firstName})`);
 
   const response = await fetch(
     `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
@@ -341,11 +345,11 @@ async function sendQuizMessage(phone: string, name: string, quizDate: string): P
             {
               type: 'body',
               parameters: [
-                { type: 'text', text: liturgicalDay },  // {{1}}
-                { type: 'text', text: firstReading },   // {{2}}
-                { type: 'text', text: gospel },         // {{3}}
-                { type: 'text', text: reflection },     // {{4}}
-                { type: 'text', text: firstName },      // {{5}}
+                { type: 'text', text: liturgicalDay },
+                { type: 'text', text: firstReading },
+                { type: 'text', text: gospel },
+                { type: 'text', text: reflection },
+                { type: 'text', text: firstName },
               ],
             },
             {
@@ -367,14 +371,12 @@ async function sendQuizMessage(phone: string, name: string, quizDate: string): P
 
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
-    const errMsg  = JSON.stringify(errBody);
-    console.error(`[WhatsApp] Send failed to ${phone}:`, errMsg);
-    throw new Error(errMsg);
+    throw new Error(JSON.stringify(errBody));
   }
 
   const result    = await response.json() as any;
   const messageId = result?.messages?.[0]?.id;
-  console.log(`[WhatsApp] ✅ Sent to ${phone}: messageId=${messageId}, wa_id=${result?.contacts?.[0]?.wa_id}`);
+  console.log(`[WhatsApp] ✅ Sent to ${phone}: messageId=${messageId}`);
   return messageId;
 }
 
