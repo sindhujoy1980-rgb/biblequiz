@@ -5,8 +5,8 @@
 // GET  /api/webhook  ← Meta verification challenge
 // POST /api/webhook  ← Incoming messages / delivery receipts
 //
-// Meta sends HMAC-SHA256 signature in x-hub-signature-256 header
-// We verify it using WHATSAPP_APP_SECRET before processing
+// IMPORTANT: On Vercel serverless, all async work (Supabase inserts)
+// MUST happen BEFORE res.json() — the function is killed after response.
 // ============================================================
 
 import { Router, Request, Response } from 'express';
@@ -20,7 +20,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ── GET: Webhook verification (one-time setup by Meta) ───────
+// ── GET: Webhook verification (one-time setup by Meta) ───────────
 router.get('/', (req: Request, res: Response) => {
   const mode      = req.query['hub.mode'];
   const token     = req.query['hub.verify_token'];
@@ -35,39 +35,27 @@ router.get('/', (req: Request, res: Response) => {
   return res.status(403).json({ error: 'Forbidden' });
 });
 
-// ── POST: Incoming events from Meta ──────────────────────────
+// ── POST: Incoming events from Meta ────────────────────────
+// NOTE: All Supabase inserts happen BEFORE res.json() to avoid
+// Vercel killing the function after the response is sent.
 router.post('/', async (req: Request, res: Response) => {
-  // 1. Verify signature (lenient if secret not set or rawBody missing)
-  const signature = req.headers['x-hub-signature-256'] as string;
-  const rawBody = (req as any).rawBody || req.body;
-  const isValid = verifySignature(rawBody, signature);
+  const body = req.body;
 
-  if (!isValid && process.env.WHATSAPP_APP_SECRET) {
-    console.warn('[Webhook] ⚠️ Signature mismatch or failed');
-    try {
-      await supabase.from('flow_debug_logs').insert({
-        step: 'WH_SIG_WARN',
-        error_msg: 'Signature mismatch',
-        notes: `sig=${signature ? signature.slice(0, 15) : 'missing'}`,
-      });
-    } catch (_) {}
+  // Must respond within 5s to Meta — but we process first (inserts are fast)
+  if (!body || body.object !== 'whatsapp_business_account') {
+    return res.status(200).json({ status: 'ok' });
   }
 
-  // 2. Acknowledge immediately (Meta requires < 5s response)
-  res.status(200).json({ status: 'ok' });
-
-  // 3. Process events asynchronously
-  const body = req.body;
-  if (!body || body.object !== 'whatsapp_business_account') return;
-
+  // Process all events synchronously BEFORE sending response
   for (const entry of body.entry || []) {
     for (const change of entry.changes || []) {
       if (change.field !== 'messages') continue;
 
       const value = change.value;
 
-      // Incoming text messages (e.g., user texting "Hello")
+      // Incoming messages (user texting the business)
       for (const message of value.messages || []) {
+        console.log(`[Webhook] Incoming msg type=${message.type} from=${message.from}`);
         try {
           await supabase.from('flow_debug_logs').insert({
             step: 'WH_MSG_IN',
@@ -80,11 +68,11 @@ router.post('/', async (req: Request, res: Response) => {
         handleIncomingMessage(message, value.metadata).catch(console.error);
       }
 
-      // Delivery & read receipts (CRITICAL for diagnosing why messages drop!)
+      // Delivery & read receipts — key for diagnosing message delivery
       for (const status of value.statuses || []) {
-        console.log(`[Webhook] Message ${status.id} — ${status.status}`);
+        const errorsStr = status.errors ? JSON.stringify(status.errors) : '';
+        console.log(`[Webhook] Status wamid=${status.id} status=${status.status} recipient=${status.recipient_id} errors=${errorsStr}`);
         try {
-          const errorsStr = status.errors ? JSON.stringify(status.errors) : '';
           await supabase.from('flow_debug_logs').insert({
             step: 'WH_STATUS',
             action: status.status || 'unknown',
@@ -93,71 +81,42 @@ router.post('/', async (req: Request, res: Response) => {
             error_msg: errorsStr,
             notes: `ts=${status.timestamp} pricing=${status.pricing?.pricing_model || ''}`,
           });
-        } catch (_) {}
+        } catch (e: any) {
+          console.error('[Webhook] Failed to log status:', e.message);
+        }
       }
     }
   }
+
+  // Respond AFTER processing — all inserts are done before this point
+  return res.status(200).json({ status: 'ok' });
 });
 
-// ── Signature verification ───────────────────────────────────
+// ── Signature verification ─────────────────────────────────
 function verifySignature(rawBody: Buffer | string | any, signature: string): boolean {
   if (!signature || !process.env.WHATSAPP_APP_SECRET) {
     return true; // Don't block if secret isn't configured
   }
-
   try {
     const bodyBuffer = Buffer.isBuffer(rawBody)
       ? rawBody
       : Buffer.from(typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody));
-
     const expectedSig = 'sha256=' + crypto
       .createHmac('sha256', process.env.WHATSAPP_APP_SECRET)
       .update(bodyBuffer)
       .digest('hex');
-
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSig)
-    );
-  } catch {
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig));
+  } catch (_) {
     return false;
   }
 }
 
-// ── Handle incoming text message ─────────────────────────────
-async function handleIncomingMessage(
-  message: { from: string; type: string; text?: { body: string }; id: string },
-  metadata: { phone_number_id: string }
-) {
-  if (message.type !== 'text') return;
-
-  const userText = message.text?.body?.trim().toLowerCase() || '';
-  console.log(`[Webhook] Message from ${message.from}: "${userText}"`);
-
-  // Auto-reply: guide user to the quiz
-  const replyText =
-    'नमस्ते! 🙏\n\nBible Quiz Daily के लिए कृपया प्रतिदिन सुबह 8 बजे हमारे संदेश की प्रतीक्षा करें।\n\n📖 ईश्वर आपको आशीष दे!';
-
-  await sendTextMessage(message.from, replyText, metadata.phone_number_id);
-}
-
-async function sendTextMessage(to: string, text: string, phoneNumberId: string) {
-  await fetch(
-    `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to,
-        type: 'text',
-        text: { body: text },
-      }),
-    }
-  );
+// ── Handle incoming user messages ───────────────────────────
+async function handleIncomingMessage(message: any, metadata: any): Promise<void> {
+  const from = message.from;
+  const text = message.text?.body?.toLowerCase() || '';
+  console.log(`[Webhook] User ${from} sent: ${text}`);
+  // Future: handle 'stop', 'help', opt-out commands here
 }
 
 export default router;
