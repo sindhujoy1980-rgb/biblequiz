@@ -23,15 +23,14 @@ export interface GeneratedQuestion {
   option_c: string;
   option_d: string;
   correct_answer: 'A' | 'B' | 'C' | 'D';
-  verse_reference: string;     // e.g. "मत्ती 10:37 (Matthew 10:37)"
-  explanation: string;         // Hindi explanation
+  verse_reference: string;
+  explanation: string;
   difficulty: 'easy' | 'medium' | 'hard';
   topic_tag?: string;
-  liturgical_day?: string;     // e.g. "14वाँ सामान्य रविवार"
-  gospel_ref?: string;         // e.g. "Matthew 10:37-42"
+  liturgical_day?: string;
+  gospel_ref?: string;
 }
 
-// ── Build prompt ──────────────────────────────────────────────
 function buildPrompt(quizDate: string): string {
   const d = new Date(quizDate + 'T00:00:00');
   const dateStr = d.toLocaleDateString('en-IN', {
@@ -83,7 +82,6 @@ Return ONLY a valid JSON array with exactly ONE object. No markdown, no extra te
 }]`;
 }
 
-// ── Validate ──────────────────────────────────────────────────
 function validate(questions: GeneratedQuestion[]): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   if (!Array.isArray(questions) || questions.length !== 1) {
@@ -101,10 +99,9 @@ function validate(questions: GeneratedQuestion[]): { valid: boolean; errors: str
   return { valid: errors.length === 0, errors };
 }
 
-// ── Main generator ────────────────────────────────────────────
 export async function generateDailyQuestions(quizDate?: string): Promise<GeneratedQuestion[]> {
   const targetDate = quizDate || new Date().toISOString().split('T')[0];
-  const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' });
+  const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' });
   const prompt = buildPrompt(targetDate);
   const MAX_RETRIES = parseInt(process.env.GEMINI_MAX_RETRIES || '3');
 
@@ -135,7 +132,6 @@ export async function generateDailyQuestions(quizDate?: string): Promise<Generat
   throw new Error('[Gemini] Failed to generate question after all retries');
 }
 
-// ── Save to Supabase ──────────────────────────────────────────
 export async function saveQuestions(questions: GeneratedQuestion[], quizDate: string): Promise<void> {
   const q = questions[0];
   const payload = [{
